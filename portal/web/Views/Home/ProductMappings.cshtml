@@ -97,6 +97,33 @@
                         <h3 class="mb-0">Database Tables & Mappings</h3>
                     </div>
                     <div class="card-body">
+                        <div class="row g-2 mb-3" id="tableFilters">
+                            <div class="col-md-4">
+                                <input id="filterSearch" class="form-control form-control-sm" placeholder="Search table or column" />
+                            </div>
+                            <div class="col-md-3">
+                                <select id="filterSchema" class="form-select form-select-sm">
+                                    <option value="">All schemas</option>
+                                    @foreach (var s in Model.Tables.Select(t => t.SchemaName).Distinct().OrderBy(s => s))
+                                    {
+                                        <option value="@s">@s</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <select id="filterMapped" class="form-select form-select-sm">
+                                    <option value="all">All tables</option>
+                                    <option value="mapped">Has mappings</option>
+                                    <option value="unmapped">Unmapped only</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text">Min mapped</span>
+                                    <input id="filterMinMapped" type="number" min="0" class="form-control" />
+                                </div>
+                            </div>
+                        </div>
                         @if (Model.Tables.Any())
                         {
                             <div class="table-responsive">
@@ -115,7 +142,8 @@
                                             var t = Model.Tables[i];
                                             var mappedCount = t.Columns.Count(c => c.ObfuscationMapping != null);
                                             var collapseId = $"t-{i}";
-                                            <tr data-mappedcount="@mappedCount" data-totalcount="@t.Columns.Count" class="@(mappedCount > 0 ? "table-success-subtle" : "")">
+                                            var columnsList = string.Join("|", t.Columns.Select(c => c.ColumnName));
+                                            <tr data-mappedcount="@mappedCount" data-totalcount="@t.Columns.Count" data-fullname="@t.FullTableName" data-schema="@t.SchemaName" data-table="@t.TableName" data-cols="@columnsList" class="@(mappedCount > 0 ? "table-success-subtle" : "")">
                                                 <td>
                                                     <strong>@t.FullTableName</strong>
                                                     @if (mappedCount > 0)
@@ -238,6 +266,7 @@
         .bg-unmapped { background: #fafafa; }
         .column-card { box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
         .table-success-subtle { background-color: #eefaf0; }
+        #tableFilters .form-control, #tableFilters .form-select { font-size: 0.9rem; }
     </style>
 }
 
@@ -267,6 +296,51 @@
             });
         })();
         (function() {
+            // Filtering logic
+            function applyFilters() {
+                const search = (document.getElementById('filterSearch')?.value || '').toLowerCase();
+                const schema = (document.getElementById('filterSchema')?.value || '');
+                const mappedMode = (document.getElementById('filterMapped')?.value || 'all');
+                const minMapped = parseInt(document.getElementById('filterMinMapped')?.value || '0');
+
+                const tbody = document.getElementById('tablesBody');
+                if (!tbody) return;
+                const rows = Array.from(tbody.querySelectorAll('tr')).filter((_, idx) => idx % 2 === 0);
+                rows.forEach(r => {
+                    const name = (r.getAttribute('data-fullname') || '').toLowerCase();
+                    const cols = (r.getAttribute('data-cols') || '').toLowerCase();
+                    const mapped = parseInt(r.getAttribute('data-mappedcount') || '0');
+                    const rowSchema = r.getAttribute('data-schema') || '';
+
+                    let visible = true;
+                    if (search) {
+                        visible = name.includes(search) || cols.includes(search);
+                    }
+                    if (visible && schema) {
+                        visible = rowSchema === schema;
+                    }
+                    if (visible && mappedMode !== 'all') {
+                        visible = mappedMode === 'mapped' ? mapped > 0 : mapped === 0;
+                    }
+                    if (visible && !Number.isNaN(minMapped) && minMapped > 0) {
+                        visible = mapped >= minMapped;
+                    }
+
+                    r.style.display = visible ? '' : 'none';
+                    const details = r.nextElementSibling;
+                    if (details && details.classList.contains('collapse')) {
+                        details.style.display = visible ? '' : 'none';
+                    }
+                });
+            }
+
+            ['filterSearch','filterSchema','filterMapped','filterMinMapped'].forEach(id => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                const evt = id === 'filterSearch' ? 'input' : 'change';
+                el.addEventListener(evt, applyFilters);
+            });
+
             function updateCardUI(card, mapped, typeName) {
                 card.classList.remove('border-secondary','bg-unmapped');
                 card.classList.remove('border-success','bg-mapped');
@@ -297,6 +371,7 @@
                 badge.classList.toggle('bg-success', next > 0);
                 badge.classList.toggle('bg-secondary', next === 0);
                 tableRow.classList.toggle('table-success-subtle', next > 0);
+                tableRow.setAttribute('data-mappedcount', String(next));
                 let pill = tableRow.querySelector('.has-mappings-pill');
                 if (next > 0) {
                     if (!pill) {
@@ -309,6 +384,8 @@
                 } else {
                     if (pill) pill.remove();
                 }
+                // Re-apply filters in case thresholds changed visibility
+                try { applyFilters(); } catch {}
             }
 
             // Use capture-phase delegated handler to intercept submits reliably
