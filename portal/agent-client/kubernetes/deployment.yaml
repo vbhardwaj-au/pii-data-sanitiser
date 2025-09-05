@@ -1,0 +1,129 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: obfuscation-agent
+  labels:
+    app: obfuscation-agent
+    component: data-processing
+spec:
+  replicas: 5  # Can be easily scaled
+  selector:
+    matchLabels:
+      app: obfuscation-agent
+  template:
+    metadata:
+      labels:
+        app: obfuscation-agent
+        component: data-processing
+    spec:
+      containers:
+      - name: agent
+        image: youracr.azurecr.io/obfuscation-agent:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: AgentConfiguration__AgentId
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: AgentConfiguration__AgentName
+          value: "K8s Obfuscation Agent"
+        - name: AgentConfiguration__Environment
+          value: "Production"
+        - name: AgentConfiguration__Location
+          value: "Kubernetes-Cluster"
+        - name: AgentConfiguration__MaxConcurrentJobs
+          value: "5"
+        - name: AgentConfiguration__Capabilities__CanProcessSqlServer
+          value: "true"
+        - name: AgentConfiguration__Capabilities__CanProcessPostgreSQL
+          value: "true"
+        - name: AgentConfiguration__Capabilities__MaxDatabaseSizeGB
+          value: "1000"
+        - name: PortalConfiguration__ApiUrl
+          valueFrom:
+            configMapKeyRef:
+              name: agent-config
+              key: portal.api.url
+        - name: PortalConfiguration__ApiKey
+          valueFrom:
+            secretKeyRef:
+              name: agent-secrets
+              key: portal.api.key
+        - name: PortalConfiguration__HeartbeatIntervalSeconds
+          value: "30"
+        - name: PortalConfiguration__JobPollingIntervalSeconds
+          value: "10"
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1"
+          limits:
+            memory: "4Gi"
+            cpu: "2"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        volumeMounts:
+        - name: logs
+          mountPath: /app/logs
+        - name: temp
+          mountPath: /tmp
+      volumes:
+      - name: logs
+        emptyDir: {}
+      - name: temp
+        emptyDir: {}
+      imagePullSecrets:
+      - name: acr-secret
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-config
+data:
+  portal.api.url: "http://portal-api-service:7001"  # Update with your API URL
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: agent-secrets
+type: Opaque
+data:
+  portal.api.key: cG9ydGFsLWFkbWluLWtleS0yMDI0  # Base64 encoded API key
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: obfuscation-agent-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: obfuscation-agent
+  minReplicas: 2
+  maxReplicas: 20
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80

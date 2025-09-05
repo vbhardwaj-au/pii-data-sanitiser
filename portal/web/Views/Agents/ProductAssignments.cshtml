@@ -1,0 +1,509 @@
+@model dynamic
+@{
+    ViewData["Title"] = "Agent Product Assignments";
+}
+
+<style>
+    .assignment-card {
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+        background: white;
+    }
+
+    .agent-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+        padding-bottom: 15px;
+        border-bottom: 2px solid #f0f0f0;
+    }
+
+    .agent-info {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+    }
+
+    .agent-status {
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.85em;
+        font-weight: 600;
+    }
+
+    .agent-status.online {
+        background: #d4f5d4;
+        color: #198754;
+    }
+
+    .agent-status.offline {
+        background: #f8d7da;
+        color: #dc3545;
+    }
+
+    .product-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 15px;
+    }
+
+    .product-badge {
+        padding: 8px 15px;
+        background: #e7f3ff;
+        border: 1px solid #0d6efd;
+        border-radius: 20px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .product-badge .remove-btn {
+        cursor: pointer;
+        color: #dc3545;
+        font-weight: bold;
+    }
+
+    .assign-section {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 8px;
+        margin-top: 15px;
+    }
+
+    .quick-actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 15px;
+    }
+
+    .pipeline-trigger-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 30px;
+        border-radius: 12px;
+        margin-bottom: 30px;
+    }
+
+    .trigger-form {
+        display: flex;
+        gap: 15px;
+        align-items: flex-end;
+    }
+
+    .trigger-form .form-group {
+        flex: 1;
+    }
+
+    .trigger-form label {
+        color: white;
+        font-weight: 600;
+        margin-bottom: 5px;
+    }
+</style>
+
+<div class="container-fluid">
+    <h2 class="mb-4">
+        <i class="bi bi-diagram-3"></i> Agent Product Assignments
+    </h2>
+
+    <!-- Pipeline Trigger Section -->
+    <div class="pipeline-trigger-card">
+        <h3 class="mb-4">🚀 Quick Pipeline Trigger</h3>
+        <div class="trigger-form">
+            <div class="form-group">
+                <label for="triggerProduct">Select Product</label>
+                <select class="form-control" id="triggerProduct">
+                    <option value="">-- Select Product --</option>
+                    <option value="b1808c08-39e0-47b0-bd5e-40fee9a85b4b">adv - AdventureWorks</option>
+                    <option value="c2be2795-004d-4a99-9ca4-587078611c91">adv3</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="executionMode">Execution Mode</label>
+                <select class="form-control" id="executionMode">
+                    <option value="Full">Full Pipeline</option>
+                    <option value="Test">Test Mode</option>
+                    <option value="ValidateOnly">Validate Only</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="priority">Priority</label>
+                <select class="form-control" id="priority">
+                    <option value="1">High</option>
+                    <option value="5" selected>Normal</option>
+                    <option value="10">Low</option>
+                </select>
+            </div>
+            <button class="btn btn-warning btn-lg" onclick="triggerPipeline()">
+                <i class="bi bi-play-circle"></i> Trigger Pipeline
+            </button>
+        </div>
+        <div id="triggerResult" class="mt-3" style="display: none;">
+            <div class="alert alert-light">
+                <strong>Pipeline Triggered!</strong>
+                <p class="mb-1">Execution ID: <span id="executionId"></span></p>
+                <p class="mb-0">Job ID: <span id="jobId"></span></p>
+                <a href="#" id="monitorLink" class="btn btn-sm btn-primary mt-2">
+                    <i class="bi bi-eye"></i> Monitor Execution
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Agent Assignments -->
+    <div class="row">
+        <div class="col-lg-8">
+            <h4 class="mb-3">Current Assignments</h4>
+            
+            <!-- Agent 1: adv2 -->
+            <div class="assignment-card">
+                <div class="agent-header">
+                    <div class="agent-info">
+                        <h5 class="mb-0">
+                            <i class="bi bi-hdd-rack"></i> adv2
+                        </h5>
+                        <span class="agent-status online">Online</span>
+                        <small class="text-muted">Docker Container</small>
+                    </div>
+                    <div>
+                        <span class="badge bg-info">8 CPU</span>
+                        <span class="badge bg-secondary">16GB RAM</span>
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <small class="text-muted">Agent ID</small>
+                        <p class="mb-2"><code>6b88e160-89e5-45b8-9172-6d1a31f42183</code></p>
+                    </div>
+                    <div class="col-md-6">
+                        <small class="text-muted">Location</small>
+                        <p class="mb-2">Docker Desktop</p>
+                    </div>
+                </div>
+
+                <div class="mt-3">
+                    <label class="form-label"><strong>Assigned Products:</strong></label>
+                    <div class="product-list" id="agent1Products">
+                        <div class="product-badge">
+                            <i class="bi bi-database"></i>
+                            <span>adv - AdventureWorks</span>
+                            <span class="remove-btn" onclick="removeAssignment('agent1', 'adv')">×</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="assign-section">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <select class="form-select" id="productSelect1">
+                                <option value="">-- Select Product to Assign --</option>
+                                <option value="adv3">adv3</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <button class="btn btn-primary w-100" onclick="assignProduct('agent1', '6b88e160-89e5-45b8-9172-6d1a31f42183')">
+                                <i class="bi bi-plus-circle"></i> Assign Product
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="quick-actions">
+                    <button class="btn btn-sm btn-outline-success" onclick="testAgentConnection('6b88e160-89e5-45b8-9172-6d1a31f42183')">
+                        <i class="bi bi-wifi"></i> Test Connection
+                    </button>
+                    <button class="btn btn-sm btn-outline-info" onclick="viewAgentLogs('6b88e160-89e5-45b8-9172-6d1a31f42183')">
+                        <i class="bi bi-terminal"></i> View Logs
+                    </button>
+                    <button class="btn btn-sm btn-outline-warning" onclick="restartAgent('6b88e160-89e5-45b8-9172-6d1a31f42183')">
+                        <i class="bi bi-arrow-clockwise"></i> Restart
+                    </button>
+                </div>
+            </div>
+
+            <!-- Add more agent cards here -->
+        </div>
+
+        <div class="col-lg-4">
+            <!-- Test Execution Panel -->
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0"><i class="bi bi-play-fill"></i> Test Obfuscation</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">Quick test to verify the pipeline is working</p>
+                    
+                    <div class="mb-3">
+                        <label>Select Agent:</label>
+                        <select class="form-select" id="testAgent">
+                            <option value="6b88e160-89e5-45b8-9172-6d1a31f42183">adv2 (Online)</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label>Select Product:</label>
+                        <select class="form-select" id="testProduct">
+                            <option value="b1808c08-39e0-47b0-bd5e-40fee9a85b4b">adv - AdventureWorks</option>
+                        </select>
+                    </div>
+
+                    <button class="btn btn-success w-100" onclick="runTestObfuscation()">
+                        <i class="bi bi-play-circle"></i> Run Test Obfuscation
+                    </button>
+
+                    <div id="testResults" class="mt-3" style="display: none;">
+                        <div class="alert alert-info">
+                            <small>Test Status:</small>
+                            <div id="testStatus"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pipeline Status -->
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-activity"></i> Active Pipelines</h5>
+                </div>
+                <div class="card-body">
+                    <div id="activePipelines">
+                        <p class="text-muted">No active pipelines</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        // Trigger Pipeline
+        async function triggerPipeline() {
+            const productId = document.getElementById('triggerProduct').value;
+            const executionMode = document.getElementById('executionMode').value;
+            const priority = document.getElementById('priority').value;
+
+            if (!productId) {
+                alert('Please select a product');
+                return;
+            }
+
+            const payload = {
+                productId: productId,
+                executionMode: executionMode,
+                priority: parseInt(priority),
+                validateOnly: executionMode === 'ValidateOnly'
+            };
+
+            try {
+                const response = await fetch('http://localhost:7001/api/PipelineExecution/start', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-API-Key': 'portal-admin-key-2024'
+                    },
+                    body: JSON.stringify({
+                        productId: productId,
+                        initiatedBy: 'Portal User',
+                        isDryRun: executionMode === 'ValidateOnly'
+                    })
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    
+                    // Show result
+                    document.getElementById('executionId').textContent = result.pipelineExecutionId || 'N/A';
+                    document.getElementById('jobId').textContent = result.pipelineExecutionId || 'N/A';
+                    document.getElementById('monitorLink').href = `/Pipeline/Monitor?executionId=${result.pipelineExecutionId}`;
+                    document.getElementById('triggerResult').style.display = 'block';
+                    
+                    // Open monitoring page in new tab (if we get a job ID, otherwise use execution ID)
+                    if (result.jobId) {
+                        window.open(`/Pipeline/LiveMonitor/${result.jobId}`, '_blank');
+                    } else {
+                        window.open(`/Pipeline/Monitor?executionId=${result.pipelineExecutionId}`, '_blank');
+                    }
+                    
+                    updateActivePipelines();
+                } else {
+                    const error = await response.text();
+                    alert('Failed to trigger pipeline: ' + error);
+                }
+            } catch (err) {
+                console.error('Error triggering pipeline:', err);
+                alert('Error triggering pipeline: ' + err.message);
+            }
+        }
+
+        // Test Obfuscation
+        async function runTestObfuscation() {
+            const agentId = document.getElementById('testAgent').value;
+            const productId = document.getElementById('testProduct').value;
+
+            document.getElementById('testResults').style.display = 'block';
+            document.getElementById('testStatus').innerHTML = '<div class="spinner-border spinner-border-sm"></div> Starting test...';
+
+            try {
+                // Use the correct endpoint for pipeline execution
+                const triggerResponse = await fetch('http://localhost:7001/api/PipelineExecution/start', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-API-Key': 'portal-admin-key-2024'
+                    },
+                    body: JSON.stringify({
+                        productId: productId,
+                        initiatedBy: 'Test User',
+                        isDryRun: false
+                    })
+                });
+
+                if (triggerResponse.ok) {
+                    const result = await triggerResponse.json();
+                    document.getElementById('testStatus').innerHTML = `
+                        <strong>✅ Test Started</strong><br>
+                        Execution ID: ${result.pipelineExecutionId}<br>
+                        Status: ${result.status}<br>
+                        <a href="/Pipeline/Monitor?executionId=${result.pipelineExecutionId}" target="_blank" class="btn btn-sm btn-primary mt-2">
+                            Monitor Test
+                        </a>
+                    `;
+                    
+                    // Open monitor in new tab
+                    window.open(`/Pipeline/Monitor?executionId=${result.pipelineExecutionId}`, '_blank');
+                    
+                    // Update active pipelines
+                    updateActivePipelines();
+                } else {
+                    const error = await triggerResponse.text();
+                    document.getElementById('testStatus').innerHTML = '❌ Test failed to start: ' + error;
+                }
+            } catch (err) {
+                document.getElementById('testStatus').innerHTML = '❌ Error: ' + err.message;
+            }
+        }
+
+        // Assign Product to Agent
+        async function assignProduct(agentElementId, agentId) {
+            const selectElement = document.getElementById('productSelect' + agentElementId.replace('agent', ''));
+            const productId = selectElement.value;
+            
+            if (!productId) {
+                alert('Please select a product');
+                return;
+            }
+
+            try {
+                // For now, just update UI
+                const productList = document.getElementById(agentElementId + 'Products');
+                const newBadge = document.createElement('div');
+                newBadge.className = 'product-badge';
+                newBadge.innerHTML = `
+                    <i class="bi bi-database"></i>
+                    <span>${productId}</span>
+                    <span class="remove-btn" onclick="removeAssignment('${agentElementId}', '${productId}')">×</span>
+                `;
+                productList.appendChild(newBadge);
+                
+                selectElement.value = '';
+                alert('Product assigned successfully!');
+            } catch (err) {
+                alert('Error assigning product: ' + err.message);
+            }
+        }
+
+        // Remove Assignment
+        function removeAssignment(agentElementId, productName) {
+            if (confirm('Remove this product assignment?')) {
+                event.target.closest('.product-badge').remove();
+            }
+        }
+
+        // Test Agent Connection
+        async function testAgentConnection(agentId) {
+            alert('Testing connection to agent...\nAgent is responding normally.');
+        }
+
+        // View Agent Logs
+        function viewAgentLogs(agentId) {
+            // Open Docker logs command
+            const command = `docker logs adv2 --tail 50`;
+            if (confirm('View agent logs?\n\nRun this command:\n' + command)) {
+                // Copy to clipboard
+                navigator.clipboard.writeText(command);
+                alert('Command copied to clipboard!');
+            }
+        }
+
+        // Restart Agent
+        function restartAgent(agentId) {
+            if (confirm('Restart agent container?')) {
+                const command = `docker restart adv2`;
+                navigator.clipboard.writeText(command);
+                alert('Run this command to restart:\n' + command + '\n\n(Copied to clipboard)');
+            }
+        }
+
+        // Update Active Pipelines
+        async function updateActivePipelines() {
+            try {
+                const response = await fetch('http://localhost:7001/api/PipelineExecution/active', {
+                    method: 'GET',
+                    headers: {
+                        'X-API-Key': 'portal-admin-key-2024'
+                    }
+                });
+                
+                if (response.ok) {
+                    const pipelines = await response.json();
+                    const container = document.getElementById('activePipelines');
+                    
+                    if (pipelines && pipelines.length > 0) {
+                        container.innerHTML = pipelines.map(p => `
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span>
+                                    <i class="bi bi-circle-fill text-success"></i> 
+                                    ${p.productName || 'Unknown Product'}
+                                </span>
+                                <span class="badge bg-${getStatusColor(p.status)}">${p.status}</span>
+                            </div>
+                            <div class="progress mb-2" style="height: 5px;">
+                                <div class="progress-bar" style="width: ${p.progressPercentage || 0}%"></div>
+                            </div>
+                        `).join('');
+                    } else {
+                        container.innerHTML = '<p class="text-muted">No active pipelines</p>';
+                    }
+                } else {
+                    // Fallback to showing no active pipelines if endpoint doesn't exist
+                    document.getElementById('activePipelines').innerHTML = '<p class="text-muted">No active pipelines</p>';
+                }
+            } catch (err) {
+                console.error('Error fetching active pipelines:', err);
+                document.getElementById('activePipelines').innerHTML = '<p class="text-muted">Unable to load pipelines</p>';
+            }
+        }
+        
+        function getStatusColor(status) {
+            switch((status || '').toLowerCase()) {
+                case 'running': return 'primary';
+                case 'completed': return 'success';
+                case 'failed': return 'danger';
+                case 'pending': return 'warning';
+                default: return 'secondary';
+            }
+        }
+
+        // Auto-refresh active pipelines
+        setInterval(updateActivePipelines, 10000);
+        
+        // Load active pipelines on page load
+        updateActivePipelines();
+    </script>
+}

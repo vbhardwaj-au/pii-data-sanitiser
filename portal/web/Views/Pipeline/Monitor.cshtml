@@ -1,0 +1,287 @@
+@model List<Contracts.DTOs.PipelineExecutionDto>
+@{
+    ViewData["Title"] = "Pipeline Monitoring";
+}
+
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>
+            <i class="bi bi-tv"></i> Pipeline Monitoring
+        </h1>
+        <div>
+            <button class="btn btn-primary" onclick="refreshData()">
+                <i class="bi bi-arrow-clockwise"></i> Refresh
+            </button>
+            <a href="@Url.Action("Dashboard", "Pipeline")" class="btn btn-secondary">
+                <i class="bi bi-speedometer2"></i> Dashboard
+            </a>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(ViewBag.Error))
+    {
+        <div class="alert alert-danger" role="alert">
+            <i class="bi bi-exclamation-triangle"></i> @ViewBag.Error
+        </div>
+    }
+
+    <!-- Current Executions -->
+    <div class="card">
+        <div class="card-header bg-dark text-white">
+            <h5 class="mb-0">
+                <i class="bi bi-play-circle"></i> Current Pipeline Executions
+                <span class="badge bg-info float-end">@(Model?.Count ?? 0) Active</span>
+            </h5>
+        </div>
+        <div class="card-body">
+            @if (Model?.Any() == true)
+            {
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Product</th>
+                                <th>Status</th>
+                                <th>Progress</th>
+                                <th>Started</th>
+                                <th>Duration</th>
+                                <th>Current Stage</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var execution in Model)
+                            {
+                                var duration = execution.CompletedAt.HasValue 
+                                    ? (execution.CompletedAt.Value - (execution.StartedAt ?? DateTime.UtcNow)).TotalMinutes
+                                    : (DateTime.UtcNow - (execution.StartedAt ?? DateTime.UtcNow)).TotalMinutes;
+                                
+                                <tr>
+                                    <td>
+                                        <strong>@execution.ProductName</strong>
+                                        <br/>
+                                        <small class="text-muted">ID: @execution.Id</small>
+                                    </td>
+                                    <td>
+                                        <span class="badge @GetStatusBadgeClass(execution.Status)">
+                                            @execution.Status
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div class="progress" style="height: 25px;">
+                                            <div class="progress-bar @GetProgressBarClass(execution.Status)" 
+                                                 role="progressbar" 
+                                                 style="width: @(execution.ProgressPercentage)%"
+                                                 aria-valuenow="@execution.ProgressPercentage" 
+                                                 aria-valuemin="0" aria-valuemax="100">
+                                                @execution.ProgressPercentage%
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        @execution.StartedAt?.ToString("HH:mm:ss")
+                                        <br/>
+                                        <small class="text-muted">@execution.StartedAt?.ToString("yyyy-MM-dd")</small>
+                                    </td>
+                                    <td>
+                                        @Math.Round(duration, 1) min
+                                    </td>
+                                    <td>
+                                        @if (execution.CurrentStage.HasValue)
+                                        {
+                                            <span class="badge bg-secondary">Stage @execution.CurrentStage / @execution.TotalStages</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">-</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (execution.Status == "Running")
+                                        {
+                                            <button class="btn btn-sm btn-warning" onclick="pauseExecution('@execution.Id')">
+                                                <i class="bi bi-pause-circle"></i> Pause
+                                            </button>
+                                            <button class="btn btn-sm btn-danger" onclick="cancelExecution('@execution.Id')">
+                                                <i class="bi bi-stop-circle"></i> Cancel
+                                            </button>
+                                        }
+                                        else if (execution.Status == "Paused")
+                                        {
+                                            <button class="btn btn-sm btn-success" onclick="resumeExecution('@execution.Id')">
+                                                <i class="bi bi-play-circle"></i> Resume
+                                            </button>
+                                            <button class="btn btn-sm btn-danger" onclick="cancelExecution('@execution.Id')">
+                                                <i class="bi bi-stop-circle"></i> Cancel
+                                            </button>
+                                        }
+                                        <button class="btn btn-sm btn-outline-primary" onclick="viewDetails('@execution.Id')">
+                                            <i class="bi bi-eye"></i> Details
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            else
+            {
+                <div class="text-center py-5">
+                    <i class="bi bi-inbox display-1 text-muted"></i>
+                    <p class="text-muted mt-3">No active pipeline executions</p>
+                    <a href="@Url.Action("Index", "Home")" class="btn btn-primary">
+                        <i class="bi bi-list"></i> View Products
+                    </a>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@functions {
+    private string GetStatusBadgeClass(string status)
+    {
+        return status?.ToLower() switch
+        {
+            "running" => "bg-primary",
+            "completed" => "bg-success",
+            "failed" => "bg-danger",
+            "paused" => "bg-warning",
+            "cancelled" => "bg-secondary",
+            "queued" => "bg-info",
+            _ => "bg-secondary"
+        };
+    }
+
+    private string GetProgressBarClass(string status)
+    {
+        return status?.ToLower() switch
+        {
+            "running" => "progress-bar-striped progress-bar-animated",
+            "completed" => "bg-success",
+            "failed" => "bg-danger",
+            "paused" => "bg-warning",
+            _ => ""
+        };
+    }
+}
+
+@section Scripts {
+    <script src="~/lib/microsoft/signalr/dist/browser/signalr.min.js"></script>
+    <script>
+        // Auto-refresh every 10 seconds (reduced with SignalR)
+        let refreshInterval = setInterval(refreshData, 10000);
+        let hubConnection;
+
+        // Set up SignalR connection when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            setupSignalRConnection();
+        });
+
+        function setupSignalRConnection() {
+            hubConnection = new signalR.HubConnectionBuilder()
+                .withUrl("/monitoringHub")
+                .configureLogging(signalR.LogLevel.Information)
+                .build();
+
+            // Handle job status updates
+            hubConnection.on("JobStatusUpdate", function (data) {
+                console.log("Job update received:", data);
+                updateJobDisplay(data);
+            });
+
+            // Handle system metrics updates
+            hubConnection.on("SystemMetricsUpdate", function (data) {
+                console.log("System metrics update:", data);
+                refreshData();
+            });
+
+            // Handle system alerts
+            hubConnection.on("SystemAlert", function (alert) {
+                console.log("System alert:", alert);
+                if (alert.severity === "Error" || alert.severity === "Critical") {
+                    refreshData();
+                }
+            });
+
+            // Start the connection
+            hubConnection.start().then(function () {
+                console.log("Connected to monitoring hub");
+                // Join monitoring groups
+                hubConnection.invoke("JoinJobMonitoring").catch(err => console.error(err));
+            }).catch(function (err) {
+                console.error("Error connecting to monitoring hub:", err);
+                // Retry connection after 5 seconds
+                setTimeout(setupSignalRConnection, 5000);
+            });
+
+            // Handle connection close
+            hubConnection.onclose(function() {
+                console.log("Disconnected from monitoring hub");
+                setTimeout(setupSignalRConnection, 5000);
+            });
+        }
+
+        function updateJobDisplay(jobData) {
+            // Update the display without full page reload
+            // For now, just refresh the page when we get updates
+            refreshData();
+        }
+
+        function refreshData() {
+            location.reload();
+        }
+
+        function viewDetails(executionId) {
+            window.location.href = '@Url.Action("Monitor", "Pipeline")' + '?executionId=' + executionId;
+        }
+
+        function pauseExecution(executionId) {
+            if (confirm('Are you sure you want to pause this execution?')) {
+                fetch('/Pipeline/PauseExecution/' + executionId, { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            refreshData();
+                        } else {
+                            alert('Failed to pause execution: ' + data.error);
+                        }
+                    });
+            }
+        }
+
+        function resumeExecution(executionId) {
+            if (confirm('Are you sure you want to resume this execution?')) {
+                fetch('/Pipeline/ResumeExecution/' + executionId, { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            refreshData();
+                        } else {
+                            alert('Failed to resume execution: ' + data.error);
+                        }
+                    });
+            }
+        }
+
+        function cancelExecution(executionId) {
+            if (confirm('Are you sure you want to cancel this execution? This action cannot be undone.')) {
+                fetch('/Pipeline/CancelExecution/' + executionId, { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            refreshData();
+                        } else {
+                            alert('Failed to cancel execution: ' + data.error);
+                        }
+                    });
+            }
+        }
+
+        // Clean up interval on page unload
+        window.addEventListener('beforeunload', function() {
+            clearInterval(refreshInterval);
+        });
+    </script>
+}

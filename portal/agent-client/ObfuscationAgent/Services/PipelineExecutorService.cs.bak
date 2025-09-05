@@ -1,0 +1,437 @@
+using System;
+using System.Collections.Generic;
+using System.Data.SqlClient;
+using System.Diagnostics;
+using System.Linq;
+using System.Net.Http;
+using System.Text;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using ObfuscationAgent.Models;
+
+namespace ObfuscationAgent.Services
+{
+    public class PipelineExecutorService
+    {
+        private readonly ILogger<PipelineExecutorService> _logger;
+        private readonly PortalCommunicationService _portalService;
+        private readonly ObfuscationEngineService _obfuscationEngine;
+        private readonly IConfiguration _configuration;
+        private readonly HttpClient _httpClient;
+        private Guid _currentJobId;
+        private readonly List<LogEntry> _logBuffer = new();
+        private DateTime _lastLogFlush = DateTime.UtcNow;
+
+        public PipelineExecutorService(
+            ILogger<PipelineExecutorService> logger,
+            PortalCommunicationService portalService,
+            ObfuscationEngineService obfuscationEngine,
+            IConfiguration configuration,
+            HttpClient httpClient)
+        {
+            _logger = logger;
+            _portalService = portalService;
+            _obfuscationEngine = obfuscationEngine;
+            _configuration = configuration;
+            _httpClient = httpClient;
+        }
+
+        public async Task<PipelineExecutionResult> ExecutePipelineAsync(
+            Guid jobId,
+            Guid productId,
+            JobConfiguration configuration,
+            CancellationToken cancellationToken = default)
+        {
+            _currentJobId = jobId;
+            var result = new PipelineExecutionResult { JobId = jobId, Success = true };
+            var stopwatch = Stopwatch.StartNew();
+
+            try
+            {
+                await LogAsync($"Starting pipeline execution for job {jobId}", LogLevel.Information);
+                
+                // 1. Fetch product configuration from API
+                await LogAsync("Fetching product configuration from portal...", LogLevel.Information);
+                var productConfig = await FetchProductConfigurationAsync(productId);
+                
+                if (productConfig == null)
+                {
+                    throw new Exception("Failed to fetch product configuration");
+                }
+
+                await LogAsync($"Retrieved configuration for product '{productConfig.ProductName}'", LogLevel.Information);
+
+                // 2. Download mapping file
+                await LogAsync("Downloading mapping file...", LogLevel.Information);
+                var mappingJson = await DownloadMappingFileAsync(productId);
+                
+                // 3. Execute pipeline stages in sequence
+                var stages = productConfig.Stages.OrderBy(s => s.ExecutionOrder).ToList();
+                await LogAsync($"Executing {stages.Count} pipeline stages", LogLevel.Information);
+
+                foreach (var stage in stages)
+                {
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        await LogAsync("Pipeline execution cancelled by user", LogLevel.Warning);
+                        result.Success = false;
+                        result.ErrorMessage = "Cancelled by user";
+                        break;
+                    }
+
+                    var stageResult = await ExecuteStageAsync(stage, productConfig, mappingJson, cancellationToken);
+                    
+                    if (!stageResult.Success && stage.IsRequired)
+                    {
+                        // Required stage failed - stop pipeline
+                        await LogAsync($"Required stage '{stage.DisplayName}' failed. Stopping pipeline.", LogLevel.Error);
+                        result.Success = false;
+                        result.ErrorMessage = $"Stage '{stage.DisplayName}' failed: {stageResult.ErrorMessage}";
+                        result.FailedStage = stage.StageName;
+                        break;
+                    }
+                    else if (!stageResult.Success && !stage.IsRequired)
+                    {
+                        // Optional stage failed - continue
+                        await LogAsync($"Optional stage '{stage.DisplayName}' failed. Continuing pipeline.", LogLevel.Warning);
+                    }
+                }
+
+                // 4. Report final status
+                stopwatch.Stop();
+                result.Duration = stopwatch.Elapsed;
+
+                if (result.Success)
+                {
+                    await LogAsync($"Pipeline completed successfully in {stopwatch.Elapsed:hh\\:mm\\:ss}", LogLevel.Information);
+                    await _portalService.UpdateJobStatusAsync(jobId, JobStatus.Completed, null, "Pipeline completed successfully");
+                }
+                else
+                {
+                    await LogAsync($"Pipeline failed after {stopwatch.Elapsed:hh\\:mm\\:ss}: {result.ErrorMessage}", LogLevel.Error);
+                    await _portalService.UpdateJobStatusAsync(jobId, JobStatus.Failed, result.ErrorMessage, null);
+                }
+
+                // Flush any remaining logs
+                await FlushLogsAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Pipeline execution failed for job {JobId}", jobId);
+                await LogAsync($"Pipeline execution error: {ex.Message}", LogLevel.Error);
+                result.Success = false;
+                result.ErrorMessage = ex.Message;
+                
+                await _portalService.UpdateJobStatusAsync(jobId, JobStatus.Failed, ex.Message, null);
+            }
+
+            return result;
+        }
+
+        private async Task<StageExecutionResult> ExecuteStageAsync(
+            StageConfiguration stage,
+            ProductObfuscationConfiguration config,
+            string mappingJson,
+            CancellationToken cancellationToken)
+        {
+            var result = new StageExecutionResult { StageName = stage.StageName, Success = true };
+            var stopwatch = Stopwatch.StartNew();
+
+            try
+            {
+                await LogAsync($"Starting stage: {stage.DisplayName}", LogLevel.Information);
+                await _portalService.UpdateStageStatusAsync(_currentJobId, stage.StageName, StageStatus.Running);
+
+                // Special handling for obfuscation stage
+                if (stage.StageName == "PIIDataObfuscation")
+                {
+                    await ExecuteObfuscationStageAsync(config, mappingJson, cancellationToken);
+                }
+                else if (stage.Scripts != null && stage.Scripts.Any())
+                {
+                    // Execute stage scripts in order
+                    foreach (var script in stage.Scripts.OrderBy(s => s.ExecutionOrder))
+                    {
+                        await LogAsync($"Executing script: {script.Name}", LogLevel.Debug);
+                        var scriptResult = await ExecuteScriptAsync(script, config);
+                        
+                        if (!scriptResult.Success && !script.ContinueOnError)
+                        {
+                            throw new Exception($"Script '{script.Name}' failed: {scriptResult.ErrorMessage}");
+                        }
+                    }
+                }
+                else
+                {
+                    // No scripts for this stage
+                    await LogAsync($"Stage '{stage.DisplayName}' has no scripts to execute", LogLevel.Information);
+                }
+
+                stopwatch.Stop();
+                await LogAsync($"Completed stage: {stage.DisplayName} in {stopwatch.Elapsed:mm\\:ss}", LogLevel.Information);
+                await _portalService.UpdateStageStatusAsync(_currentJobId, stage.StageName, StageStatus.Completed);
+                
+                result.Duration = stopwatch.Elapsed;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Stage {StageName} failed", stage.StageName);
+                await LogAsync($"Stage '{stage.DisplayName}' failed: {ex.Message}", LogLevel.Error);
+                await _portalService.UpdateStageStatusAsync(_currentJobId, stage.StageName, StageStatus.Failed);
+                
+                result.Success = false;
+                result.ErrorMessage = ex.Message;
+            }
+
+            return result;
+        }
+
+        private async Task ExecuteObfuscationStageAsync(
+            ProductObfuscationConfiguration config,
+            string mappingJson,
+            CancellationToken cancellationToken)
+        {
+            await LogAsync("Starting data obfuscation process", LogLevel.Information);
+            
+            // Set up progress reporting
+            var lastProgressReport = DateTime.UtcNow;
+            long totalRows = 0;
+            long processedRows = 0;
+            
+            _obfuscationEngine.OnProgress += async (sender, args) =>
+            {
+                processedRows = args.ProcessedRows;
+                totalRows = args.TotalRows;
+                
+                // Throttle progress updates
+                if (DateTime.UtcNow - lastProgressReport > TimeSpan.FromSeconds(2))
+                {
+                    var percent = totalRows > 0 ? (decimal)processedRows * 100 / totalRows : 0;
+                    await LogAsync($"Processing table: {args.TableName} - {processedRows:N0}/{totalRows:N0} rows ({percent:F1}%)", 
+                        LogLevel.Information);
+                    
+                    await _portalService.UpdateJobProgressAsync(_currentJobId, percent, processedRows, args.TablesCompleted);
+                    lastProgressReport = DateTime.UtcNow;
+                }
+            };
+
+            _obfuscationEngine.OnTableCompleted += async (sender, args) =>
+            {
+                await LogAsync($"Completed table: {args.TableName} - {args.RowsProcessed:N0} rows in {args.Duration:mm\\:ss}", 
+                    LogLevel.Information);
+            };
+
+            // Execute obfuscation
+            var obfuscationConfig = new ObfuscationConfiguration
+            {
+                SourceConnectionString = config.SourceConnectionString,
+                TargetConnectionString = config.TargetConnectionString,
+                MappingJson = mappingJson,
+                BatchSize = config.BatchSize,
+                SqlBatchSize = config.SqlBatchSize,
+                ParallelThreads = config.ParallelThreads,
+                CommandTimeoutSeconds = config.CommandTimeoutSeconds,
+                GlobalSeed = config.GlobalSeed,
+                MaxCacheSize = config.MaxCacheSize
+            };
+
+            await _obfuscationEngine.ExecuteObfuscationAsync(obfuscationConfig, cancellationToken);
+            
+            await LogAsync($"Obfuscation completed. Total rows processed: {processedRows:N0}", LogLevel.Information);
+        }
+
+        private async Task<ScriptExecutionResult> ExecuteScriptAsync(ScriptConfiguration script, ProductObfuscationConfiguration config)
+        {
+            var result = new ScriptExecutionResult { ScriptName = script.Name, Success = true };
+
+            try
+            {
+                switch (script.ScriptType.ToLower())
+                {
+                    case "sql":
+                        result = await ExecuteSqlScriptAsync(script, config);
+                        break;
+                    
+                    case "powershell":
+                        result = await ExecutePowerShellScriptAsync(script);
+                        break;
+                    
+                    case "bash":
+                        result = await ExecuteBashScriptAsync(script);
+                        break;
+                    
+                    default:
+                        await LogAsync($"Unsupported script type: {script.ScriptType}", LogLevel.Warning);
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                result.Success = false;
+                result.ErrorMessage = ex.Message;
+                await LogAsync($"Script execution failed: {ex.Message}", LogLevel.Error);
+            }
+
+            return result;
+        }
+
+        private async Task<ScriptExecutionResult> ExecuteSqlScriptAsync(ScriptConfiguration script, ProductObfuscationConfiguration config)
+        {
+            var result = new ScriptExecutionResult { ScriptName = script.Name, Success = true };
+            
+            // Determine which connection string to use based on script content
+            var connectionString = script.Content.Contains("TARGET", StringComparison.OrdinalIgnoreCase) 
+                ? config.TargetConnectionString 
+                : config.SourceConnectionString;
+
+            using var connection = new SqlConnection(connectionString);
+            await connection.OpenAsync();
+            
+            using var command = new SqlCommand(script.Content, connection);
+            command.CommandTimeout = script.TimeoutSeconds;
+            
+            try
+            {
+                var rowsAffected = await command.ExecuteNonQueryAsync();
+                await LogAsync($"SQL script '{script.Name}' executed successfully. Rows affected: {rowsAffected}", LogLevel.Debug);
+            }
+            catch (Exception ex)
+            {
+                result.Success = false;
+                result.ErrorMessage = ex.Message;
+                await LogAsync($"SQL script '{script.Name}' failed: {ex.Message}", LogLevel.Error);
+            }
+
+            return result;
+        }
+
+        private async Task<ScriptExecutionResult> ExecutePowerShellScriptAsync(ScriptConfiguration script)
+        {
+            // Placeholder for PowerShell execution
+            await LogAsync($"PowerShell script execution not yet implemented: {script.Name}", LogLevel.Warning);
+            return new ScriptExecutionResult { ScriptName = script.Name, Success = true };
+        }
+
+        private async Task<ScriptExecutionResult> ExecuteBashScriptAsync(ScriptConfiguration script)
+        {
+            // Placeholder for Bash execution
+            await LogAsync($"Bash script execution not yet implemented: {script.Name}", LogLevel.Warning);
+            return new ScriptExecutionResult { ScriptName = script.Name, Success = true };
+        }
+
+        private async Task<ProductObfuscationConfiguration> FetchProductConfigurationAsync(Guid productId)
+        {
+            try
+            {
+                var response = await _httpClient.GetAsync($"api/agent/products/{productId}/configuration");
+                
+                if (response.IsSuccessStatusCode)
+                {
+                    var json = await response.Content.ReadAsStringAsync();
+                    return JsonSerializer.Deserialize<ProductObfuscationConfiguration>(json, 
+                        new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                }
+                
+                _logger.LogError("Failed to fetch product configuration: {StatusCode}", response.StatusCode);
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching product configuration");
+                return null;
+            }
+        }
+
+        private async Task<string> DownloadMappingFileAsync(Guid productId)
+        {
+            try
+            {
+                var response = await _httpClient.GetAsync($"api/agent/products/{productId}/mapping");
+                
+                if (response.IsSuccessStatusCode)
+                {
+                    return await response.Content.ReadAsStringAsync();
+                }
+                
+                _logger.LogError("Failed to download mapping file: {StatusCode}", response.StatusCode);
+                throw new Exception($"Failed to download mapping file: {response.StatusCode}");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error downloading mapping file");
+                throw;
+            }
+        }
+
+        private async Task LogAsync(string message, LogLevel level, Dictionary<string, object> metadata = null)
+        {
+            _logger.Log(level, message);
+            
+            _logBuffer.Add(new LogEntry
+            {
+                Timestamp = DateTime.UtcNow,
+                Level = level.ToString(),
+                Message = message,
+                Metadata = metadata
+            });
+
+            // Flush logs if buffer is full or time elapsed
+            if (_logBuffer.Count >= 10 || DateTime.UtcNow - _lastLogFlush > TimeSpan.FromSeconds(5))
+            {
+                await FlushLogsAsync();
+            }
+        }
+
+        private async Task FlushLogsAsync()
+        {
+            if (_logBuffer.Count == 0) return;
+
+            try
+            {
+                await _portalService.SendLogBatchAsync(_currentJobId, _logBuffer.ToList());
+                _logBuffer.Clear();
+                _lastLogFlush = DateTime.UtcNow;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to send log batch to portal");
+            }
+        }
+    }
+
+    // Result classes
+    public class PipelineExecutionResult
+    {
+        public Guid JobId { get; set; }
+        public bool Success { get; set; }
+        public string ErrorMessage { get; set; }
+        public string FailedStage { get; set; }
+        public TimeSpan Duration { get; set; }
+    }
+
+    public class StageExecutionResult
+    {
+        public string StageName { get; set; }
+        public bool Success { get; set; }
+        public string ErrorMessage { get; set; }
+        public TimeSpan Duration { get; set; }
+    }
+
+    public class ScriptExecutionResult
+    {
+        public string ScriptName { get; set; }
+        public bool Success { get; set; }
+        public string ErrorMessage { get; set; }
+    }
+
+    public class LogEntry
+    {
+        public DateTime Timestamp { get; set; }
+        public string Level { get; set; }
+        public string Message { get; set; }
+        public Dictionary<string, object> Metadata { get; set; }
+    }
+}

@@ -8,6 +8,7 @@ using API.Features.Config.GetSupportedDataTypes;
 using API.Features.Products.ExportProductMapping;
 using API.Features.Products.UpdateGlobalSettings;
 using API.Features.Products.TestConnection;
+using API.Features.Products.CreateProduct;
 using Contracts.DTOs;
 
 namespace API.Controllers;
@@ -31,11 +32,29 @@ public class ProductsController : ControllerBase
         return Ok(products);
     }
 
+    [HttpGet("{id:guid}")]
+    public async Task<ActionResult<Contracts.DTOs.ProductDto>> GetProduct(Guid id)
+    {
+        var query = new GetProductsQuery();
+        var products = await _mediator.Send(query);
+        var product = products?.FirstOrDefault(p => p.Id == id);
+        
+        if (product == null)
+            return NotFound();
+            
+        return Ok(product);
+    }
+
         [HttpPost]
-        public async Task<ActionResult> CreateProduct([FromBody] Contracts.DTOs.CreateProductDto dto)
+        public async Task<ActionResult<ProductDto>> CreateProduct([FromBody] CreateProductDto dto)
         {
-            // Minimal creation using EF via repository not wired; implement inline using DAL context to keep scope small
-            return StatusCode(501); // Not implemented in this scope
+            var command = new CreateProductCommand(dto);
+            var product = await _mediator.Send(command);
+            
+            if (product == null)
+                return BadRequest("Failed to create product");
+                
+            return CreatedAtAction(nameof(GetProduct), new { id = product.Id }, product);
         }
 
     [HttpGet("{id:guid}/mappings")]

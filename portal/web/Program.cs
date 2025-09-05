@@ -11,8 +11,11 @@ builder.Services.AddControllersWithViews();
 // Add HTTP Client Factory for API communication
 builder.Services.AddHttpClient("API", client =>
 {
-    client.BaseAddress = new Uri(builder.Configuration["ApiBaseUrl"] ?? "https://localhost:7001/");
+    client.BaseAddress = new Uri(builder.Configuration["ApiBaseUrl"] ?? "http://localhost:7001/");
     client.DefaultRequestHeaders.Add("Accept", "application/json");
+    // Add API key for authentication
+    var apiKey = builder.Configuration["ApiKey"] ?? "portal-admin-key-2024";
+    client.DefaultRequestHeaders.Add("X-API-Key", apiKey);
 });
 
 // Add configuration

@@ -67,6 +67,8 @@ StyleCopReport.xml
 *.pidb
 *.svclog
 *.scc
+*.dll
+*.exe
 
 # Test Coverage
 *.coverage
@@ -96,6 +98,14 @@ checkpoints/
 
 # Generated JSON configuration files
 JSON/
+
+# Playwright test artifacts
+playwright-report/
+test-results/
+test-results.json
+*.png
+*.webm
+*.mp4
 
 # OS generated files
 .DS_Store

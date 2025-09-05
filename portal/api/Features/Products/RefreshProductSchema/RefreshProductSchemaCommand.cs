@@ -3,6 +3,7 @@ using DAL;
 using DAL.Repositories;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using API.Services;
 
 namespace API.Features.Products.RefreshProductSchema;
 
@@ -25,12 +26,14 @@ public class RefreshProductSchemaCommandHandler : IRequestHandler<RefreshProduct
     private readonly PortalDbContext _db;
     private readonly IProductRepository _products;
     private readonly ILogger<RefreshProductSchemaCommandHandler> _logger;
+    private readonly IConnectionStringEncryptionService _encryptionService;
 
-    public RefreshProductSchemaCommandHandler(PortalDbContext db, IProductRepository products, ILogger<RefreshProductSchemaCommandHandler> logger)
+    public RefreshProductSchemaCommandHandler(PortalDbContext db, IProductRepository products, ILogger<RefreshProductSchemaCommandHandler> logger, IConnectionStringEncryptionService encryptionService)
     {
         _db = db;
         _products = products;
         _logger = logger;
+        _encryptionService = encryptionService;
     }
 
     public async Task<bool> Handle(RefreshProductSchemaCommand request, CancellationToken cancellationToken)
@@ -45,24 +48,77 @@ public class RefreshProductSchemaCommandHandler : IRequestHandler<RefreshProduct
             }
             _logger.LogInformation("RefreshSchema: Start for ProductId={ProductId}, Name={Name}, Technology={Tech}", product.Id, product.Name, product.DatabaseTechnology);
 
+            // Get the Source connection string for schema discovery
+            var sourceConnection = await _db.ProductConnectionStrings
+                .Where(pcs => pcs.ProductId == product.Id && pcs.ConnectionType == "Source" && pcs.IsActive)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (sourceConnection == null)
+            {
+                _logger.LogWarning("RefreshSchema: No active Source connection string found for ProductId={ProductId}", request.ProductId);
+                _logger.LogWarning("RefreshSchema: Available connections for ProductId={ProductId}:", request.ProductId);
+                var allConnections = await _db.ProductConnectionStrings
+                    .Where(pcs => pcs.ProductId == product.Id)
+                    .ToListAsync(cancellationToken);
+                foreach (var conn in allConnections)
+                {
+                    _logger.LogWarning("  - Type: {Type}, Active: {Active}, HasConnectionString: {HasConn}", 
+                        conn.ConnectionType, conn.IsActive, !string.IsNullOrEmpty(conn.ConnectionString));
+                }
+                return false;
+            }
+            
+            _logger.LogInformation("RefreshSchema: Found Source connection for ProductId={ProductId}, ConnectionType={Type}", 
+                request.ProductId, sourceConnection.ConnectionType);
+
             // Only SQL Server for now. Extend later for PostgreSQL etc.
             // Fetch tables and columns from the target DB
             var tables = new List<(string Schema, string Table)>();
             var columnsByTable = new Dictionary<(string Schema, string Table), List<(string Column, string Type, int? MaxLen, bool IsNullable, int Ordinal)>>();
 
-        // Harden connection string for local/dev environments
-        var csb = new SqlConnectionStringBuilder(product.ConnectionString)
+        // Decrypt the connection string before using it
+        _logger.LogInformation("RefreshSchema: Using connection string from Source connection");
+        _logger.LogInformation("RefreshSchema: Raw encrypted connection string length={Length}, IsEmpty={IsEmpty}", 
+            sourceConnection.ConnectionString?.Length ?? 0,
+            string.IsNullOrEmpty(sourceConnection.ConnectionString));
+        
+        if (string.IsNullOrEmpty(sourceConnection.ConnectionString))
+        {
+            _logger.LogError("RefreshSchema: Source connection string is empty or null!");
+            return false;
+        }
+        
+        // Decrypt the connection string
+        string decryptedConnectionString;
+        try
+        {
+            decryptedConnectionString = _encryptionService.DecryptConnectionString(sourceConnection.ConnectionString);
+            _logger.LogInformation("RefreshSchema: Successfully decrypted connection string");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "RefreshSchema: Failed to decrypt connection string");
+            return false;
+        }
+        
+        _logger.LogInformation("RefreshSchema: Connection details - Server={Server}, Database={Database}", 
+            new SqlConnectionStringBuilder(decryptedConnectionString).DataSource,
+            new SqlConnectionStringBuilder(decryptedConnectionString).InitialCatalog);
+            
+        var csb = new SqlConnectionStringBuilder(decryptedConnectionString)
         {
             TrustServerCertificate = true,
             ConnectTimeout = 30
         };
+        
+        _logger.LogInformation("RefreshSchema: Attempting to connect to database...");
         await using (var conn = new SqlConnection(csb.ToString()))
         {
             try
             {
                 await conn.OpenAsync(cancellationToken);
                 var parsed = new SqlConnectionStringBuilder(csb.ToString());
-                _logger.LogInformation("RefreshSchema: Connected to server={Server}, db={Db}", parsed.DataSource, parsed.InitialCatalog);
+                _logger.LogInformation("RefreshSchema: Successfully connected to server={Server}, db={Db}", parsed.DataSource, parsed.InitialCatalog);
 
                 // Get tables
                 var getTablesCmd = new SqlCommand(@"SELECT TABLE_SCHEMA, TABLE_NAME
@@ -108,9 +164,12 @@ public class RefreshProductSchemaCommandHandler : IRequestHandler<RefreshProduct
                 var colCount = columnsByTable.Sum(kv => kv.Value.Count);
                 _logger.LogInformation("RefreshSchema: Discovered {ColumnCount} columns", colCount);
             }
-            catch
+            catch (Exception ex)
             {
-                _logger.LogError("RefreshSchema: Failed to connect or read INFORMATION_SCHEMA for ProductId={ProductId}", request.ProductId);
+                _logger.LogError(ex, "RefreshSchema: Failed to connect or read INFORMATION_SCHEMA for ProductId={ProductId}. Error: {Error}", 
+                    request.ProductId, ex.Message);
+                _logger.LogError("RefreshSchema: Connection string details - Server={Server}, Database={Database}", 
+                    csb.DataSource, csb.InitialCatalog);
                 return false;
             }
         }

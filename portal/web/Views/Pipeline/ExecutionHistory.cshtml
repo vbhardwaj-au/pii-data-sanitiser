@@ -1,0 +1,380 @@
+@model IEnumerable<Contracts.DTOs.PipelineExecutionDto>
+@{
+    ViewData["Title"] = "Pipeline Execution History";
+}
+
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-12">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="@Url.Action("Dashboard", "Pipeline")">Pipeline Dashboard</a></li>
+                    <li class="breadcrumb-item active" aria-current="page">Execution History</li>
+                </ol>
+            </nav>
+
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h2 class="mb-0">
+                        <i class="bi bi-clock-history"></i> Pipeline Execution History
+                    </h2>
+                    <div class="btn-group">
+                        <button class="btn btn-outline-secondary btn-sm" onclick="refreshHistory()">
+                            <i class="bi bi-arrow-clockwise"></i> Refresh
+                        </button>
+                        <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#filterModal">
+                            <i class="bi bi-funnel"></i> Filter
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    @if (ViewBag.Error != null)
+                    {
+                        <div class="alert alert-danger" role="alert">
+                            @ViewBag.Error
+                        </div>
+                    }
+
+                    <!-- Summary Statistics -->
+                    <div class="row mb-4">
+                        <div class="col-md-3">
+                            <div class="stat-card">
+                                <div class="stat-label">Total Executions</div>
+                                <div class="stat-value">@(Model?.Count() ?? 0)</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="stat-card success">
+                                <div class="stat-label">Successful</div>
+                                <div class="stat-value">@(Model?.Count(e => e.Status == "Completed") ?? 0)</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="stat-card danger">
+                                <div class="stat-label">Failed</div>
+                                <div class="stat-value">@(Model?.Count(e => e.Status == "Failed") ?? 0)</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="stat-card info">
+                                <div class="stat-label">In Progress</div>
+                                <div class="stat-value">@(Model?.Count(e => e.Status == "Running") ?? 0)</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Execution History Table -->
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Execution ID</th>
+                                    <th>Product</th>
+                                    <th>Status</th>
+                                    <th>Started</th>
+                                    <th>Completed</th>
+                                    <th>Duration</th>
+                                    <th>Progress</th>
+                                    <th>Stages</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (Model != null && Model.Any())
+                                {
+                                    @foreach (var execution in Model.OrderByDescending(e => e.StartedAt))
+                                    {
+                                        <tr class="@GetRowClass(execution.Status)">
+                                            <td>
+                                                <small class="font-monospace">@execution.Id.ToString().Substring(0, 8)...</small>
+                                            </td>
+                                            <td>@execution.ProductName</td>
+                                            <td>
+                                                <span class="badge @GetStatusBadgeClass(execution.Status)">
+                                                    @execution.Status
+                                                </span>
+                                            </td>
+                                            <td>@execution.StartedAt?.ToString("MM/dd HH:mm:ss")</td>
+                                            <td>@execution.CompletedAt?.ToString("MM/dd HH:mm:ss")</td>
+                                            <td>
+                                                @if (execution.DurationMs.HasValue)
+                                                {
+                                                    @FormatDuration(execution.DurationMs.Value)
+                                                }
+                                                else
+                                                {
+                                                    <span>-</span>
+                                                }
+                                            </td>
+                                            <td>
+                                                <div class="progress" style="height: 20px;">
+                                                    <div class="progress-bar @GetProgressBarClass(execution.Status)" 
+                                                         role="progressbar" 
+                                                         style="width: @execution.ProgressPercentage%"
+                                                         aria-valuenow="@execution.ProgressPercentage" 
+                                                         aria-valuemin="0" 
+                                                         aria-valuemax="100">
+                                                        @execution.ProgressPercentage%
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <span class="badge bg-secondary">
+                                                    @execution.StagesCompleted / @execution.TotalStages
+                                                </span>
+                                                @if (execution.StagesFailed > 0)
+                                                {
+                                                    <span class="badge bg-danger">@execution.StagesFailed failed</span>
+                                                }
+                                            </td>
+                                            <td>
+                                                <div class="btn-group btn-group-sm">
+                                                    <a href="@Url.Action("ExecutionDetails", "Pipeline", new { id = execution.Id })" 
+                                                       class="btn btn-outline-primary" title="View Details">
+                                                        <i class="bi bi-eye"></i>
+                                                    </a>
+                                                    @if (execution.Status == "Running")
+                                                    {
+                                                        <button class="btn btn-outline-warning" 
+                                                                onclick="pauseExecution('@execution.Id')" 
+                                                                title="Pause">
+                                                            <i class="bi bi-pause"></i>
+                                                        </button>
+                                                        <button class="btn btn-outline-danger" 
+                                                                onclick="cancelExecution('@execution.Id')" 
+                                                                title="Cancel">
+                                                            <i class="bi bi-x-circle"></i>
+                                                        </button>
+                                                    }
+                                                    @if (execution.Status == "Failed")
+                                                    {
+                                                        <button class="btn btn-outline-success" 
+                                                                onclick="retryExecution('@execution.Id')" 
+                                                                title="Retry">
+                                                            <i class="bi bi-arrow-repeat"></i>
+                                                        </button>
+                                                    }
+                                                    <button class="btn btn-outline-info" 
+                                                            onclick="viewLogs('@execution.Id')" 
+                                                            title="View Logs">
+                                                        <i class="bi bi-file-text"></i>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                                else
+                                {
+                                    <tr>
+                                        <td colspan="9" class="text-center text-muted">
+                                            No pipeline executions found.
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Pagination -->
+                    @if (Model != null && Model.Count() > 20)
+                    {
+                        <nav aria-label="Page navigation">
+                            <ul class="pagination justify-content-center">
+                                <li class="page-item disabled">
+                                    <a class="page-link" href="#" tabindex="-1">Previous</a>
+                                </li>
+                                <li class="page-item active"><a class="page-link" href="#">1</a></li>
+                                <li class="page-item"><a class="page-link" href="#">2</a></li>
+                                <li class="page-item"><a class="page-link" href="#">3</a></li>
+                                <li class="page-item">
+                                    <a class="page-link" href="#">Next</a>
+                                </li>
+                            </ul>
+                        </nav>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filter Modal -->
+<div class="modal fade" id="filterModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Filter Executions</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="filterForm">
+                    <div class="mb-3">
+                        <label class="form-label">Status</label>
+                        <select class="form-select" id="filterStatus">
+                            <option value="">All</option>
+                            <option value="Completed">Completed</option>
+                            <option value="Failed">Failed</option>
+                            <option value="Running">Running</option>
+                            <option value="Cancelled">Cancelled</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Date Range</label>
+                        <input type="date" class="form-control mb-2" id="filterStartDate" />
+                        <input type="date" class="form-control" id="filterEndDate" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Product</label>
+                        <select class="form-select" id="filterProduct">
+                            <option value="">All Products</option>
+                            @foreach (var product in Model?.Select(e => e.ProductName).Distinct() ?? Enumerable.Empty<string>())
+                            {
+                                <option value="@product">@product</option>
+                            }
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" onclick="applyFilter()">Apply Filter</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@functions {
+    string GetStatusBadgeClass(string status)
+    {
+        return status switch
+        {
+            "Completed" => "bg-success",
+            "Failed" => "bg-danger",
+            "Running" => "bg-primary",
+            "Cancelled" => "bg-secondary",
+            "Paused" => "bg-warning",
+            _ => "bg-secondary"
+        };
+    }
+
+    string GetProgressBarClass(string status)
+    {
+        return status switch
+        {
+            "Completed" => "bg-success",
+            "Failed" => "bg-danger",
+            "Running" => "progress-bar-striped progress-bar-animated",
+            _ => "bg-secondary"
+        };
+    }
+
+    string GetRowClass(string status)
+    {
+        return status switch
+        {
+            "Failed" => "table-danger",
+            "Running" => "table-info",
+            _ => ""
+        };
+    }
+
+    string FormatDuration(long milliseconds)
+    {
+        var timeSpan = TimeSpan.FromMilliseconds(milliseconds);
+        if (timeSpan.TotalHours >= 1)
+            return $"{(int)timeSpan.TotalHours}h {timeSpan.Minutes}m";
+        if (timeSpan.TotalMinutes >= 1)
+            return $"{(int)timeSpan.TotalMinutes}m {timeSpan.Seconds}s";
+        return $"{timeSpan.Seconds}s";
+    }
+}
+
+@section Scripts {
+    <script>
+        function refreshHistory() {
+            location.reload();
+        }
+
+        function pauseExecution(id) {
+            if (confirm('Pause this execution?')) {
+                fetch(`/Pipeline/PauseExecution/${id}`, { method: 'POST' })
+                    .then(() => location.reload());
+            }
+        }
+
+        function cancelExecution(id) {
+            if (confirm('Cancel this execution?')) {
+                fetch(`/Pipeline/CancelExecution/${id}`, { method: 'POST' })
+                    .then(() => location.reload());
+            }
+        }
+
+        function retryExecution(id) {
+            if (confirm('Retry this execution?')) {
+                fetch(`/Pipeline/RetryExecution/${id}`, { method: 'POST' })
+                    .then(() => location.reload());
+            }
+        }
+
+        function viewLogs(id) {
+            window.open(`/Pipeline/ExecutionLogs/${id}`, '_blank');
+        }
+
+        function applyFilter() {
+            // Implement filtering logic
+            const status = document.getElementById('filterStatus').value;
+            const startDate = document.getElementById('filterStartDate').value;
+            const endDate = document.getElementById('filterEndDate').value;
+            const product = document.getElementById('filterProduct').value;
+            
+            const params = new URLSearchParams();
+            if (status) params.append('status', status);
+            if (startDate) params.append('startDate', startDate);
+            if (endDate) params.append('endDate', endDate);
+            if (product) params.append('product', product);
+            
+            window.location.href = '/Pipeline/ExecutionHistory?' + params.toString();
+        }
+    </script>
+}
+
+@section Styles {
+    <style>
+        .stat-card {
+            padding: 15px;
+            border-radius: 8px;
+            background: #f8f9fa;
+            text-align: center;
+            border-left: 4px solid #0d6efd;
+        }
+        .stat-card.success {
+            border-left-color: #198754;
+        }
+        .stat-card.danger {
+            border-left-color: #dc3545;
+        }
+        .stat-card.info {
+            border-left-color: #0dcaf0;
+        }
+        .stat-label {
+            font-size: 0.875rem;
+            color: #6c757d;
+            margin-bottom: 5px;
+        }
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #212529;
+        }
+        .progress {
+            font-size: 0.75rem;
+        }
+        .table tbody tr {
+            transition: background-color 0.2s;
+        }
+        .table tbody tr:hover {
+            background-color: rgba(0, 123, 255, 0.05);
+        }
+    </style>
+}

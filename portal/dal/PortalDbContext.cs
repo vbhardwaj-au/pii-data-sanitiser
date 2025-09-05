@@ -14,6 +14,16 @@ public class PortalDbContext : DbContext
     public DbSet<TableColumn> TableColumns { get; set; }
     public DbSet<ColumnObfuscationMapping> ColumnObfuscationMappings { get; set; }
     public DbSet<ObfuscationConfiguration> ObfuscationConfigurations { get; set; }
+    public DbSet<ProductConnectionString> ProductConnectionStrings { get; set; }
+    public DbSet<PipelineStage> PipelineStages { get; set; }
+    public DbSet<ProductPipelineConfiguration> ProductPipelineConfigurations { get; set; }
+    public DbSet<PipelineStageScript> PipelineStageScripts { get; set; }
+    public DbSet<ScriptExecutionLog> ScriptExecutionLogs { get; set; }
+    public DbSet<PipelineExecution> PipelineExecutions { get; set; }
+    public DbSet<StageExecution> StageExecutions { get; set; }
+    public DbSet<ObfuscationAgent> ObfuscationAgents { get; set; }
+    public DbSet<ObfuscationJob> ObfuscationJobs { get; set; }
+    public DbSet<JobExecutionLog> JobExecutionLogs { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -114,6 +124,274 @@ public class PortalDbContext : DbContext
             entity.HasIndex(e => e.ProductId);
             entity.HasIndex(e => e.IsActive);
             entity.HasIndex(e => e.IsDefault);
+        });
+
+        // ProductConnectionString configuration
+        modelBuilder.Entity<ProductConnectionString>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.ConnectionType).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.ConnectionString).IsRequired().HasColumnType("NVARCHAR(MAX)");
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.CreatedBy).HasMaxLength(255);
+            entity.Property(e => e.UpdatedBy).HasMaxLength(255);
+            
+            entity.HasOne(d => d.Product)
+                .WithMany(p => p.ProductConnectionStrings)
+                .HasForeignKey(d => d.ProductId)
+                .OnDelete(DeleteBehavior.Cascade);
+                
+            // Unique constraint: One connection type per product
+            entity.HasIndex(e => new { e.ProductId, e.ConnectionType })
+                .IsUnique()
+                .HasDatabaseName("UQ_ProductConnectionStrings_Type");
+                
+            entity.HasIndex(e => e.ProductId);
+            entity.HasIndex(e => e.ConnectionType);
+            entity.HasIndex(e => e.IsActive);
+        });
+
+        // PipelineStage configuration
+        modelBuilder.Entity<PipelineStage>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.DisplayName).IsRequired().HasMaxLength(150);
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.ConfigurationTemplate).HasColumnType("NVARCHAR(MAX)");
+            
+            // Unique constraint on name
+            entity.HasIndex(e => e.Name).IsUnique();
+            entity.HasIndex(e => e.ExecutionOrder);
+            entity.HasIndex(e => e.IsActive);
+            entity.HasIndex(e => e.IsRequired);
+        });
+
+        // ProductPipelineConfiguration configuration
+        modelBuilder.Entity<ProductPipelineConfiguration>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Configuration).HasColumnType("NVARCHAR(MAX)");
+            entity.Property(e => e.OnFailureAction).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.Notes).HasMaxLength(1000);
+            entity.Property(e => e.CreatedBy).HasMaxLength(255);
+            entity.Property(e => e.UpdatedBy).HasMaxLength(255);
+            
+            entity.HasOne(d => d.Product)
+                .WithMany(p => p.ProductPipelineConfigurations)
+                .HasForeignKey(d => d.ProductId)
+                .OnDelete(DeleteBehavior.Cascade);
+                
+            entity.HasOne(d => d.PipelineStage)
+                .WithMany(ps => ps.ProductPipelineConfigurations)
+                .HasForeignKey(d => d.PipelineStageId)
+                .OnDelete(DeleteBehavior.Cascade);
+                
+            // Unique constraint: One configuration per product per stage
+            entity.HasIndex(e => new { e.ProductId, e.PipelineStageId })
+                .IsUnique()
+                .HasDatabaseName("UQ_ProductPipelineConfiguration_ProductStage");
+                
+            entity.HasIndex(e => e.ProductId);
+            entity.HasIndex(e => e.PipelineStageId);
+            entity.HasIndex(e => e.IsEnabled);
+        });
+
+        // PipelineStageScript configuration
+        modelBuilder.Entity<PipelineStageScript>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(255);
+            entity.Property(e => e.Description).HasMaxLength(1000);
+            entity.Property(e => e.SqlScript).IsRequired().HasColumnType("NVARCHAR(MAX)");
+            entity.Property(e => e.OnFailureAction).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.ExpectedResultType).HasMaxLength(50);
+            entity.Property(e => e.Tags).HasMaxLength(500);
+            entity.Property(e => e.SecurityValidationNotes).HasColumnType("NVARCHAR(MAX)");
+            entity.Property(e => e.CreatedBy).HasMaxLength(255);
+            entity.Property(e => e.UpdatedBy).HasMaxLength(255);
+            
+            entity.HasOne(d => d.Product)
+                .WithMany(p => p.PipelineStageScripts)
+                .HasForeignKey(d => d.ProductId)
+                .OnDelete(DeleteBehavior.Cascade);
+                
+            entity.HasOne(d => d.PipelineStage)
+                .WithMany(ps => ps.PipelineStageScripts)
+                .HasForeignKey(d => d.PipelineStageId)
+                .OnDelete(DeleteBehavior.Cascade);
+                
+            entity.HasIndex(e => e.ProductId);
+            entity.HasIndex(e => e.PipelineStageId);
+            entity.HasIndex(e => new { e.ProductId, e.PipelineStageId, e.ExecutionOrder });
+            entity.HasIndex(e => e.IsEnabled);
+            entity.HasIndex(e => e.IsSecurityValidated);
+        });
+
+        // ScriptExecutionLog configuration
+        modelBuilder.Entity<ScriptExecutionLog>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Status).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.ErrorMessage).HasColumnType("NVARCHAR(MAX)");
+            entity.Property(e => e.ErrorStackTrace).HasColumnType("NVARCHAR(MAX)");
+            entity.Property(e => e.ExecutedSql).HasColumnType("NVARCHAR(MAX)");
+            entity.Property(e => e.ConnectionType).HasMaxLength(50);
+            entity.Property(e => e.ExecutionTarget).HasMaxLength(255);
+            entity.Property(e => e.ExecutionMetadata).HasColumnType("NVARCHAR(MAX)");
+            entity.Property(e => e.ExecutedBy).HasMaxLength(255);
+            
+            entity.HasOne(d => d.Script)
+                .WithMany(s => s.ExecutionLogs)
+                .HasForeignKey(d => d.ScriptId)
+                .OnDelete(DeleteBehavior.Cascade);
+                
+            entity.HasIndex(e => e.ScriptId);
+            entity.HasIndex(e => e.PipelineExecutionId);
+            entity.HasIndex(e => e.StartedAt);
+            entity.HasIndex(e => e.Status);
+        });
+
+        // PipelineExecution configuration
+        modelBuilder.Entity<PipelineExecution>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Status).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.ErrorMessage).HasColumnType("NVARCHAR(MAX)");
+            entity.Property(e => e.ErrorStackTrace).HasColumnType("NVARCHAR(MAX)");
+            entity.Property(e => e.InitiatedBy).HasMaxLength(255);
+            entity.Property(e => e.CancellationReason).HasColumnType("NVARCHAR(MAX)");
+            entity.Property(e => e.ConfigurationSnapshot).HasColumnType("NVARCHAR(MAX)");
+            entity.Property(e => e.ExecutionParameters).HasColumnType("NVARCHAR(MAX)");
+            entity.Property(e => e.ConnectionType).HasMaxLength(50);
+            entity.Property(e => e.Tags).HasMaxLength(500);
+            
+            entity.HasOne(d => d.Product)
+                .WithMany(p => p.PipelineExecutions)
+                .HasForeignKey(d => d.ProductId)
+                .OnDelete(DeleteBehavior.Cascade);
+                
+            entity.HasIndex(e => e.ProductId);
+            entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => e.QueuedAt);
+            entity.HasIndex(e => e.StartedAt);
+            entity.HasIndex(e => e.Priority);
+            entity.HasIndex(e => e.IsDryRun);
+        });
+
+        // StageExecution configuration
+        modelBuilder.Entity<StageExecution>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.StageName).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.Status).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.OnFailureAction).HasMaxLength(20);
+            entity.Property(e => e.ErrorMessage).HasColumnType("NVARCHAR(MAX)");
+            entity.Property(e => e.ErrorStackTrace).HasColumnType("NVARCHAR(MAX)");
+            entity.Property(e => e.ConfigurationSnapshot).HasColumnType("NVARCHAR(MAX)");
+            entity.Property(e => e.ExecutionMetadata).HasColumnType("NVARCHAR(MAX)");
+            entity.Property(e => e.OutputSummary).HasColumnType("NVARCHAR(MAX)");
+            entity.Property(e => e.Warnings).HasColumnType("NVARCHAR(MAX)");
+            
+            entity.HasOne(d => d.PipelineExecution)
+                .WithMany(pe => pe.StageExecutions)
+                .HasForeignKey(d => d.PipelineExecutionId)
+                .OnDelete(DeleteBehavior.Cascade);
+                
+            entity.HasOne(d => d.PipelineStage)
+                .WithMany()
+                .HasForeignKey(d => d.PipelineStageId)
+                .OnDelete(DeleteBehavior.Restrict);
+                
+            entity.HasIndex(e => e.PipelineExecutionId);
+            entity.HasIndex(e => e.PipelineStageId);
+            entity.HasIndex(e => e.ExecutionOrder);
+            entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => e.QueuedAt);
+            entity.HasIndex(e => e.StartedAt);
+        });
+
+        // ObfuscationAgent configuration
+        modelBuilder.Entity<ObfuscationAgent>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.HostName).IsRequired().HasMaxLength(255);
+            entity.Property(e => e.IpAddress).IsRequired().HasMaxLength(45);
+            entity.Property(e => e.Version).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.Environment).HasMaxLength(50);
+            entity.Property(e => e.Location).HasMaxLength(50);
+            entity.Property(e => e.Notes).HasMaxLength(500);
+            entity.Property(e => e.Capabilities)
+                .HasConversion(
+                    v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
+                    v => System.Text.Json.JsonSerializer.Deserialize<AgentCapabilities>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new AgentCapabilities()
+                )
+                .HasColumnType("NVARCHAR(MAX)");
+
+            entity.HasIndex(e => e.Name).IsUnique();
+            entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => e.IsEnabled);
+            entity.HasIndex(e => e.LastHeartbeat);
+            entity.HasIndex(e => new { e.HostName, e.IpAddress });
+        });
+
+        // ObfuscationJob configuration
+        modelBuilder.Entity<ObfuscationJob>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.JobName).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.MappingVersion).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.MappingSasUrl).IsRequired().HasColumnType("NVARCHAR(MAX)");
+            entity.Property(e => e.ErrorMessage).HasMaxLength(1000);
+            entity.Property(e => e.ResultSummary).HasMaxLength(4000);
+            entity.Property(e => e.ResultsBlobUrl).HasColumnType("NVARCHAR(MAX)");
+            entity.Property(e => e.CreatedBy).HasMaxLength(100);
+            entity.Property(e => e.Configuration)
+                .HasConversion(
+                    v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
+                    v => System.Text.Json.JsonSerializer.Deserialize<JobConfiguration>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new JobConfiguration()
+                )
+                .HasColumnType("NVARCHAR(MAX)");
+
+            entity.HasOne(d => d.Product)
+                .WithMany()
+                .HasForeignKey(d => d.ProductId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(d => d.Agent)
+                .WithMany(a => a.Jobs)
+                .HasForeignKey(d => d.AgentId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(e => e.ProductId);
+            entity.HasIndex(e => e.AgentId);
+            entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => e.Priority);
+            entity.HasIndex(e => e.CreatedAt);
+            entity.HasIndex(e => e.StartedAt);
+        });
+
+        // JobExecutionLog configuration
+        modelBuilder.Entity<JobExecutionLog>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Component).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.Message).IsRequired().HasColumnType("NVARCHAR(MAX)");
+            entity.Property(e => e.Details).HasColumnType("NVARCHAR(MAX)");
+            entity.Property(e => e.Exception).HasColumnType("NVARCHAR(MAX)");
+            entity.Property(e => e.TableName).HasMaxLength(100);
+            entity.Property(e => e.ColumnName).HasMaxLength(100);
+
+            entity.HasOne(d => d.Job)
+                .WithMany(j => j.ExecutionLogs)
+                .HasForeignKey(d => d.JobId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(e => e.JobId);
+            entity.HasIndex(e => e.Timestamp);
+            entity.HasIndex(e => e.LogLevel);
         });
     }
 }

@@ -1,0 +1,44 @@
+{
+  "Timestamp": "2025-09-04T13:24:46.155278Z",
+  "Configuration": {
+    "GlobalSeed": "PII-Sanitizer-2024-CrossDB-Deterministic-AU-v3.7.2",
+    "BatchSize": 2000,
+    "ParallelThreads": 8,
+    "DryRun": false
+  },
+  "TablesProcessed": [
+    {
+      "TableName": "HumanResources.Employee",
+      "Priority": 10,
+      "ColumnsObfuscated": 2
+    },
+    {
+      "TableName": "Person.PersonPhone",
+      "Priority": 10,
+      "ColumnsObfuscated": 1
+    },
+    {
+      "TableName": "Person.Address",
+      "Priority": 10,
+      "ColumnsObfuscated": 4
+    },
+    {
+      "TableName": "Person.EmailAddress",
+      "Priority": 10,
+      "ColumnsObfuscated": 1
+    },
+    {
+      "TableName": "Sales.CreditCard",
+      "Priority": 10,
+      "ColumnsObfuscated": 1
+    },
+    {
+      "TableName": "Production.ProductReview",
+      "Priority": 10,
+      "ColumnsObfuscated": 1
+    }
+  ],
+  "MappingStatistics": {
+    "TotalMappings": 1271
+  }
+}

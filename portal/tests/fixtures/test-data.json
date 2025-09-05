@@ -1,0 +1,98 @@
+{
+  "products": [
+    {
+      "name": "Test AdventureWorks",
+      "description": "Test database for AdventureWorks obfuscation",
+      "databaseTechnology": "SqlServer",
+      "globalSeed": "TestSeed2024",
+      "batchSize": 1000,
+      "parallelThreads": 4
+    },
+    {
+      "name": "Test Northwind", 
+      "description": "Test database for Northwind obfuscation",
+      "databaseTechnology": "SqlServer",
+      "globalSeed": "NorthwindSeed2024",
+      "batchSize": 2000,
+      "parallelThreads": 8
+    }
+  ],
+  "connectionStrings": [
+    {
+      "connectionType": "Source",
+      "connectionString": "Server=test-source.db;Database=AdventureWorks;User=testuser;Password=testpass123;",
+      "description": "Source database connection"
+    },
+    {
+      "connectionType": "Target", 
+      "connectionString": "Server=test-target.db;Database=AdventureWorks_Obf;User=testuser;Password=testpass123;",
+      "description": "Target obfuscated database connection"
+    },
+    {
+      "connectionType": "Backup",
+      "connectionString": "Server=test-backup.db;Database=AdventureWorks_Bkp;User=testuser;Password=testpass123;",
+      "description": "Backup database connection"
+    }
+  ],
+  "pipelineStages": [
+    {
+      "stageName": "DataReduction",
+      "displayName": "Data Reduction",
+      "description": "Remove unnecessary data and archive old records",
+      "stageOrder": 1,
+      "isSystemStage": true
+    },
+    {
+      "stageName": "PreObfuscation", 
+      "displayName": "Pre-Obfuscation",
+      "description": "Prepare data for obfuscation process",
+      "stageOrder": 2,
+      "isSystemStage": true
+    },
+    {
+      "stageName": "Obfuscation",
+      "displayName": "Obfuscation", 
+      "description": "Core data obfuscation process",
+      "stageOrder": 3,
+      "isSystemStage": true
+    },
+    {
+      "stageName": "PostObfuscation",
+      "displayName": "Post-Obfuscation",
+      "description": "Post-processing and data cleanup",
+      "stageOrder": 4, 
+      "isSystemStage": true
+    },
+    {
+      "stageName": "Testing",
+      "displayName": "Testing & Validation",
+      "description": "Validate obfuscation results and deterministic consistency",
+      "stageOrder": 5,
+      "isSystemStage": true
+    }
+  ],
+  "testScripts": {
+    "validSql": [
+      "SELECT COUNT(*) FROM Person.Person WHERE FirstName IS NOT NULL",
+      "UPDATE Person.Person SET FirstName = 'TestName' WHERE BusinessEntityID = 1",
+      "INSERT INTO TestTable (Name, Value) VALUES ('Test', 123)",
+      "DELETE FROM TempTable WHERE CreatedDate < DATEADD(day, -30, GETDATE())"
+    ],
+    "invalidSql": [
+      "DROP DATABASE AdventureWorks",
+      "EXEC xp_cmdshell 'dir'",
+      "BULK INSERT TestTable FROM 'C:\\temp\\data.csv'",
+      "CREATE LOGIN testuser WITH PASSWORD = 'password'"
+    ],
+    "dataReduction": [
+      "DELETE FROM Logs WHERE CreatedDate < DATEADD(month, -6, GETDATE())",
+      "TRUNCATE TABLE TempProcessingData",
+      "UPDATE Archive.ProcessedRecords SET IsArchived = 1 WHERE ProcessedDate < DATEADD(year, -1, GETDATE())"
+    ],
+    "preObfuscation": [
+      "ALTER TABLE Person.Person DISABLE TRIGGER ALL",
+      "CREATE INDEX IX_Temp_Processing ON Person.Person (BusinessEntityID)",
+      "UPDATE Person.Person SET ModifiedDate = GETDATE() WHERE FirstName IS NULL"
+    ]
+  }
+}

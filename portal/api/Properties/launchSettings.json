@@ -1,0 +1,13 @@
+{
+  "profiles": {
+    "api": {
+      "commandName": "Project",
+      "launchBrowser": false,
+      "applicationUrl": "http://0.0.0.0:7001",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "ASPNETCORE_URLS": "http://0.0.0.0:7001"
+      }
+    }
+  }
+}

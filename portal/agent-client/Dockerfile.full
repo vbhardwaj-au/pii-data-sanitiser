@@ -1,0 +1,108 @@
+# Multi-stage build for Obfuscation Agent with Data Obfuscation Engine
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+
+# Copy Common project first (needed by data-obfuscation)
+COPY Common/Common.csproj ./Common/
+COPY Common/ ./Common/
+
+# Copy contracts project
+COPY portal/contracts/Contracts.csproj ./contracts/
+COPY portal/contracts/ ./contracts/
+
+# Copy data-obfuscation project
+COPY data-obfuscation/DataObfuscation.csproj ./data-obfuscation/
+COPY data-obfuscation/ ./data-obfuscation/
+
+# Copy agent project file
+COPY portal/agent-client/ObfuscationAgent/ObfuscationAgent.csproj ./ObfuscationAgent/
+COPY portal/agent-client/ObfuscationAgent/ ./ObfuscationAgent/
+
+# Fix the project reference paths for Docker build context
+RUN sed -i 's|<ProjectReference Include="[^"]*Contracts.csproj" />|<ProjectReference Include="../contracts/Contracts.csproj" />|g' ./ObfuscationAgent/ObfuscationAgent.csproj
+RUN sed -i 's|<ProjectReference Include="[^"]*Common.csproj" />|<ProjectReference Include="../Common/Common.csproj" />|g' ./data-obfuscation/DataObfuscation.csproj
+
+# Restore dependencies for all projects
+RUN dotnet restore data-obfuscation/DataObfuscation.csproj
+RUN dotnet restore ObfuscationAgent/ObfuscationAgent.csproj
+
+# Build data-obfuscation first
+WORKDIR /src/data-obfuscation
+RUN dotnet build -c Release -o /app/data-obfuscation
+
+# Build agent
+WORKDIR /src/ObfuscationAgent
+RUN dotnet build -c Release -o /app/build
+
+# Publish agent
+FROM build AS publish
+WORKDIR /src/ObfuscationAgent
+RUN dotnet publish -c Release -o /app/publish --no-self-contained
+
+# Runtime image
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
+WORKDIR /app
+
+# Install SQL Server tools for different database types
+RUN apt-get update && \
+    apt-get install -y \
+    curl \
+    gnupg \
+    apt-transport-https \
+    postgresql-client \
+    && curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
+    && curl https://packages.microsoft.com/config/debian/11/prod.list > /etc/apt/sources.list.d/mssql-release.list \
+    && apt-get update \
+    && ACCEPT_EULA=Y apt-get install -y msodbcsql18 mssql-tools18 \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Add SQL tools to PATH
+ENV PATH="$PATH:/opt/mssql-tools18/bin"
+
+# Copy published agent
+COPY --from=publish /app/publish .
+
+# Copy data-obfuscation executable and dependencies
+COPY --from=build /app/data-obfuscation ./data-obfuscation/
+
+# Remove the agent executable file (keep only DLL)
+RUN rm -f /app/ObfuscationAgent
+
+# Create directory structure expected by agent
+RUN mkdir -p /app/data-obfuscation/bin/Release/net8.0
+
+# Copy DataObfuscation files to the expected location
+RUN cp /app/data-obfuscation/DataObfuscation /app/data-obfuscation/bin/Release/net8.0/DataObfuscation
+RUN cp /app/data-obfuscation/DataObfuscation.dll /app/data-obfuscation/bin/Release/net8.0/DataObfuscation.dll
+RUN cp /app/data-obfuscation/DataObfuscation.deps.json /app/data-obfuscation/bin/Release/net8.0/DataObfuscation.deps.json
+RUN cp /app/data-obfuscation/DataObfuscation.runtimeconfig.json /app/data-obfuscation/bin/Release/net8.0/DataObfuscation.runtimeconfig.json
+RUN cp /app/data-obfuscation/*.dll /app/data-obfuscation/bin/Release/net8.0/ || true
+RUN ln -sf /app/data-obfuscation/DataObfuscation /app/data-obfuscation/bin/Release/net8.0/DataObfuscation.exe
+
+# Create non-root user and data directory
+RUN groupadd -r obfuscator && useradd -r -g obfuscator obfuscator && \
+    mkdir -p /home/obfuscator/.local/share/ObfuscationAgent && \
+    chown -R obfuscator:obfuscator /home/obfuscator && \
+    chown -R obfuscator:obfuscator /app
+
+# Set user
+USER obfuscator
+
+# Set HOME environment variable for proper LocalApplicationData resolution
+ENV HOME=/home/obfuscator
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+# Expose port
+EXPOSE 8080
+
+# Set environment variables
+ENV ASPNETCORE_URLS=http://+:8080
+ENV DOTNET_RUNNING_IN_CONTAINER=true
+ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
+
+# Entry point
+ENTRYPOINT ["dotnet", "/app/ObfuscationAgent.dll"]

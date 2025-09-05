@@ -1,0 +1,299 @@
+@model Contracts.DTOs.DashboardOverviewDto
+@{
+    ViewData["Title"] = "Pipeline Dashboard";
+}
+
+<div class="container-fluid mt-4">
+    <h1 class="mb-4">
+        <i class="bi bi-speedometer2"></i> Pipeline Dashboard
+    </h1>
+
+    @if (!string.IsNullOrEmpty(ViewBag.Error))
+    {
+        <div class="alert alert-danger" role="alert">
+            <i class="bi bi-exclamation-triangle"></i> @ViewBag.Error
+        </div>
+    }
+
+    <!-- Metrics Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-white bg-primary">
+                <div class="card-body">
+                    <h5 class="card-title">Executions Today</h5>
+                    <h2 class="card-text">@(Model?.Metrics?.ExecutionsToday ?? 0)</h2>
+                    <small>Total pipeline runs</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-success">
+                <div class="card-body">
+                    <h5 class="card-title">Successful</h5>
+                    <h2 class="card-text">@(Model?.Metrics?.SuccessfulToday ?? 0)</h2>
+                    <small>@((Model?.Metrics?.TodaySuccessRate ?? 0).ToString("F1"))% success rate</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-danger">
+                <div class="card-body">
+                    <h5 class="card-title">Failed</h5>
+                    <h2 class="card-text">@(Model?.Metrics?.FailedToday ?? 0)</h2>
+                    <small>Requires attention</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-info">
+                <div class="card-body">
+                    <h5 class="card-title">Currently Running</h5>
+                    <h2 class="card-text">@(Model?.Metrics?.CurrentlyRunning ?? 0)</h2>
+                    <small>Active pipelines</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Active Executions -->
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header bg-dark text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-play-circle"></i> Active Pipeline Executions
+                    </h5>
+                </div>
+                <div class="card-body">
+                    @if (Model?.ActiveExecutions?.Any() == true)
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Product</th>
+                                        <th>Status</th>
+                                        <th>Progress</th>
+                                        <th>Started</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var execution in Model.ActiveExecutions)
+                                    {
+                                        <tr>
+                                            <td>@execution.ProductName</td>
+                                            <td>
+                                                <span class="badge @GetStatusBadgeClass(execution.Status)">
+                                                    @execution.Status
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <div class="progress" style="height: 20px;">
+                                                    <div class="progress-bar" role="progressbar" 
+                                                         style="width: @(execution.ProgressPercentage)%"
+                                                         aria-valuenow="@execution.ProgressPercentage" 
+                                                         aria-valuemin="0" aria-valuemax="100">
+                                                        @execution.ProgressPercentage%
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td>@execution.StartedAt?.ToString("HH:mm:ss")</td>
+                                            <td>
+                                                <a href="@Url.Action("Monitor", "Pipeline", new { executionId = execution.Id })" 
+                                                   class="btn btn-sm btn-outline-primary">
+                                                    <i class="bi bi-eye"></i> View
+                                                </a>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="text-muted text-center my-3">
+                            <i class="bi bi-inbox"></i> No active pipeline executions
+                        </p>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Activities -->
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header bg-dark text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-clock-history"></i> Recent Activities
+                    </h5>
+                </div>
+                <div class="card-body" style="max-height: 400px; overflow-y: auto;">
+                    @if (Model?.RecentActivities?.Any() == true)
+                    {
+                        <div class="timeline">
+                            @foreach (var activity in Model.RecentActivities)
+                            {
+                                <div class="mb-3 pb-2 border-bottom">
+                                    <div class="d-flex justify-content-between">
+                                        <span class="badge @GetSeverityBadgeClass(activity.Severity)">
+                                            @activity.ActivityType
+                                        </span>
+                                        <small class="text-muted">
+                                            @activity.Timestamp.ToString("HH:mm:ss")
+                                        </small>
+                                    </div>
+                                    <div class="mt-1">
+                                        <strong>@activity.ProductName</strong> - @activity.StageName
+                                    </div>
+                                    <small class="text-muted">@activity.Description</small>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="text-muted text-center my-3">
+                            <i class="bi bi-inbox"></i> No recent activities
+                        </p>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- System Health -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-dark text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-heart-pulse"></i> System Health
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <div class="d-flex align-items-center">
+                                @if (Model?.SystemHealth?.DatabaseConnected == true)
+                                {
+                                    <i class="bi bi-check-circle-fill text-success fs-3 me-2"></i>
+                                    <div>
+                                        <strong>Database</strong><br/>
+                                        <small class="text-success">Connected</small>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <i class="bi bi-x-circle-fill text-danger fs-3 me-2"></i>
+                                    <div>
+                                        <strong>Database</strong><br/>
+                                        <small class="text-danger">Disconnected</small>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="d-flex align-items-center">
+                                @if (Model?.SystemHealth?.JobServerHealthy == true)
+                                {
+                                    <i class="bi bi-check-circle-fill text-success fs-3 me-2"></i>
+                                    <div>
+                                        <strong>Job Server</strong><br/>
+                                        <small class="text-success">Healthy</small>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <i class="bi bi-x-circle-fill text-danger fs-3 me-2"></i>
+                                    <div>
+                                        <strong>Job Server</strong><br/>
+                                        <small class="text-danger">Unhealthy</small>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="d-flex align-items-center">
+                                <i class="bi bi-hourglass-split text-info fs-3 me-2"></i>
+                                <div>
+                                    <strong>Pending Jobs</strong><br/>
+                                    <small>@(Model?.SystemHealth?.PendingJobs ?? 0) in queue</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="d-flex align-items-center">
+                                <i class="bi bi-exclamation-triangle text-warning fs-3 me-2"></i>
+                                <div>
+                                    <strong>Failed Jobs</strong><br/>
+                                    <small>@(Model?.SystemHealth?.FailedJobs ?? 0) need attention</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-dark text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-lightning"></i> Quick Actions
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <a href="@Url.Action("Index", "Home")" class="btn btn-primary me-2">
+                        <i class="bi bi-list"></i> View Products
+                    </a>
+                    <a href="@Url.Action("Monitor", "Pipeline")" class="btn btn-info me-2">
+                        <i class="bi bi-tv"></i> Monitor Executions
+                    </a>
+                    <a href="/hangfire" target="_blank" class="btn btn-secondary">
+                        <i class="bi bi-gear"></i> Hangfire Dashboard
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@functions {
+    private string GetStatusBadgeClass(string status)
+    {
+        return status?.ToLower() switch
+        {
+            "running" => "bg-primary",
+            "completed" => "bg-success",
+            "failed" => "bg-danger",
+            "paused" => "bg-warning",
+            "cancelled" => "bg-secondary",
+            _ => "bg-info"
+        };
+    }
+
+    private string GetSeverityBadgeClass(string severity)
+    {
+        return severity?.ToLower() switch
+        {
+            "error" => "bg-danger",
+            "warning" => "bg-warning",
+            "info" => "bg-info",
+            _ => "bg-secondary"
+        };
+    }
+}
+
+@section Scripts {
+    <script>
+        // Auto-refresh dashboard every 30 seconds
+        setTimeout(function() {
+            location.reload();
+        }, 30000);
+    </script>
+}

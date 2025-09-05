@@ -1,0 +1,908 @@
+@model Contracts.DTOs.ProductDto
+@{
+    ViewData["Title"] = $"Product Details - {Model?.Name}";
+}
+
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-12">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home")">Products</a></li>
+                    <li class="breadcrumb-item active" aria-current="page">@Model?.Name</li>
+                </ol>
+            </nav>
+
+            @if (TempData["Success"] != null)
+            {
+                <div class="alert alert-success alert-dismissible fade show" role="alert">
+                    @TempData["Success"]
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            }
+
+            @if (TempData["Error"] != null)
+            {
+                <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                    @TempData["Error"]
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            }
+
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h2 class="mb-0">Product Details</h2>
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-primary btn-sm" id="btnEdit">
+                            <i class="bi bi-pencil"></i> Edit
+                        </button>
+                        <button type="button" class="btn btn-success btn-sm" id="btnTestConnection">
+                            <i class="bi bi-plug"></i> Test Connection
+                        </button>
+                        <a href="@Url.Action("Configure", "Pipeline", new { productId = Model?.Id })" class="btn btn-info btn-sm">
+                            <i class="bi bi-layers"></i> Configure Pipeline
+                        </a>
+                        <a href="@Url.Action("Scripts", "Pipeline", new { productId = Model?.Id })" class="btn btn-warning btn-sm">
+                            <i class="bi bi-code-square"></i> SQL Scripts
+                        </a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    @if (Model != null)
+                    {
+                        <form id="productForm" asp-action="UpdateProduct" asp-route-id="@Model.Id" method="post">
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">Name</label>
+                                    <input name="Name" value="@Model.Name" class="form-control" readonly required />
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Database Technology</label>
+                                    <select name="DatabaseTechnology" class="form-select" disabled required>
+                                        <option value="SqlServer" selected="@(Model.DatabaseTechnology == "SqlServer")">SQL Server</option>
+                                        <option value="PostgreSQL" selected="@(Model.DatabaseTechnology == "PostgreSQL")">PostgreSQL</option>
+                                        <option value="MySQL" selected="@(Model.DatabaseTechnology == "MySQL")">MySQL</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label">Location <i class="bi bi-info-circle" data-bs-toggle="tooltip" title="OnPremises databases can only be processed by OnPremises agents, Azure databases only by Azure agents"></i></label>
+                                    <select name="Location" class="form-select" disabled required>
+                                        <option value="OnPremises" selected="@(Model.Location == "OnPremises")">On-Premises</option>
+                                        <option value="Azure" selected="@(Model.Location == "Azure")">Azure</option>
+                                    </select>
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label">Description</label>
+                                    <textarea name="Description" class="form-control" rows="2" readonly>@Model.Description</textarea>
+                                </div>
+                                <!-- Connection string managed in separate section below -->
+                                <div class="col-12">
+                                    <div id="connectionTestResult"></div>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Global Seed</label>
+                                    <input name="GlobalSeed" value="@Model.GlobalSeed" class="form-control" readonly />
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Mapping Cache Directory</label>
+                                    <input name="MappingCacheDirectory" value="@Model.MappingCacheDirectory" class="form-control" readonly />
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Batch Size</label>
+                                    <input name="BatchSize" type="number" value="@Model.BatchSize" class="form-control" readonly />
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">SQL Batch Size</label>
+                                    <input name="SqlBatchSize" type="number" value="@Model.SqlBatchSize" class="form-control" readonly />
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Parallel Threads</label>
+                                    <input name="ParallelThreads" type="number" value="@Model.ParallelThreads" class="form-control" readonly />
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Command Timeout (s)</label>
+                                    <input name="CommandTimeoutSeconds" type="number" value="@Model.CommandTimeoutSeconds" class="form-control" readonly />
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Max Cache Size</label>
+                                    <input name="MaxCacheSize" type="number" value="@Model.MaxCacheSize" class="form-control" readonly />
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Created</label>
+                                    <input type="text" value="@Model.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss")" class="form-control" readonly disabled />
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Last Updated</label>
+                                    <input type="text" value="@Model.UpdatedAt.ToString("yyyy-MM-dd HH:mm:ss")" class="form-control" readonly disabled />
+                                </div>
+                                <div class="col-12">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="IsActive" value="true" disabled @(Model.IsActive ? "checked" : "") />
+                                        <label class="form-check-label">Active</label>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="mt-3" id="formButtons" style="display: none;">
+                                <button type="submit" class="btn btn-primary">Save Changes</button>
+                                <button type="button" class="btn btn-secondary" id="btnCancel">Cancel</button>
+                            </div>
+                        </form>
+                    }
+                    else
+                    {
+                        <p class="text-muted">Product not found.</p>
+                    }
+                </div>
+            </div>
+
+            <!-- Connection Strings Management -->
+            <div class="card mt-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h3 class="mb-0">Database Connection Strings</h3>
+                    <button type="button" class="btn btn-primary btn-sm" id="btnAddConnectionString">
+                        <i class="bi bi-plus-circle"></i> Add Connection String
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div id="connectionStringsContainer">
+                        <div class="text-center py-4">
+                            <div class="spinner-border" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2 text-muted">Loading connection strings...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Agent Assignment Section -->
+            <div class="card mt-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h3 class="mb-0"><i class="bi bi-hdd-rack"></i> Agent Assignments</h3>
+                    <button class="btn btn-primary btn-sm" onclick="triggerPipeline('@Model?.Id')">
+                        <i class="bi bi-play-circle"></i> Trigger Pipeline
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div id="agentAssignments" class="row">
+                        <div class="col-12">
+                            <p class="text-muted">Loading agent assignments...</p>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <button class="btn btn-outline-primary btn-sm" onclick="window.location.href='/Agents/ProductAssignments'">
+                            <i class="bi bi-gear"></i> Manage Agent Assignments
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h3 class="mb-0">Quick Actions</h3>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <a href="@Url.Action("ProductMappings", "Home", new { id = Model?.Id })" class="btn btn-outline-primary w-100">
+                                <i class="bi bi-diagram-3"></i> View Mappings
+                            </a>
+                        </div>
+                        <div class="col-md-3">
+                            <a href="@Url.Action("Configure", "Pipeline", new { productId = Model?.Id })" class="btn btn-outline-success w-100">
+                                <i class="bi bi-gear"></i> Configure Pipeline
+                            </a>
+                        </div>
+                        <div class="col-md-3">
+                            <a href="@Url.Action("Scripts", "Pipeline", new { productId = Model?.Id })" class="btn btn-outline-warning w-100">
+                                <i class="bi bi-code-square"></i> Manage SQL Scripts
+                            </a>
+                        </div>
+                        <div class="col-md-3">
+                            <a href="@Url.Action("Monitor", "Pipeline")" class="btn btn-outline-info w-100">
+                                <i class="bi bi-activity"></i> Monitor Executions
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Connection String Modal -->
+            <div class="modal fade" id="connectionStringModal" tabindex="-1" aria-labelledby="connectionStringModalLabel" aria-hidden="true">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="connectionStringModalLabel">Add Connection String</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <form id="connectionStringForm">
+                            <div class="modal-body">
+                                <input type="hidden" id="connectionStringId" name="id" />
+                                <input type="hidden" id="productId" name="productId" value="@Model?.Id" />
+                                
+                                <div class="row g-3">
+                                    <div class="col-12">
+                                        <label class="form-label">Connection Type</label>
+                                        <select class="form-select" id="connectionType" name="connectionType" required>
+                                            <option value="">Select connection type...</option>
+                                            <option value="Source">Production Database (Source)</option>
+                                            <option value="Target">Obfuscated Database (Target)</option>
+                                            <option value="Backup">Database Backup</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label">Connection String</label>
+                                        <textarea class="form-control font-monospace" id="connectionString" name="connectionString" rows="4" required 
+                                                placeholder="Server=your-server;Database=your-database;Integrated Security=true;"></textarea>
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label">Description (Optional)</label>
+                                        <input type="text" class="form-control" id="description" name="description" 
+                                               placeholder="Brief description of this connection..." />
+                                    </div>
+                                    <div class="col-12">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="isActive" name="isActive" checked />
+                                            <label class="form-check-label" for="isActive">
+                                                Active (available for use)
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                <button type="button" class="btn btn-outline-info" id="btnTestModalConnection">
+                                    <i class="bi bi-plug"></i> Test Connection
+                                </button>
+                                <button type="submit" class="btn btn-primary">Save Connection String</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        let connectionStringModal;
+        let connectionStrings = [];
+        const productId = '@Model?.Id';
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            const form = document.getElementById('productForm');
+            const btnEdit = document.getElementById('btnEdit');
+            const btnCancel = document.getElementById('btnCancel');
+            const formButtons = document.getElementById('formButtons');
+            const btnShowConnStr = document.getElementById('btnShowConnStr');
+            const btnTestConnection = document.getElementById('btnTestConnection');
+            const connStrInput = document.querySelector('input[name="ConnectionString"]');
+            
+            let isPasswordVisible = false;
+            let originalConnStr = connStrInput?.value || '';
+            
+            // Initialize connection strings modal
+            const modalElement = document.getElementById('connectionStringModal');
+            if (modalElement) {
+                connectionStringModal = new bootstrap.Modal(modalElement);
+            }
+            
+            // Load connection strings on page load
+            loadConnectionStrings();
+            
+            // Mask connection string initially
+            if (connStrInput) {
+                connStrInput.type = 'password';
+            }
+            
+            // Toggle connection string visibility
+            btnShowConnStr?.addEventListener('click', function() {
+                if (connStrInput) {
+                    isPasswordVisible = !isPasswordVisible;
+                    connStrInput.type = isPasswordVisible ? 'text' : 'password';
+                    this.innerHTML = isPasswordVisible ? '<i class="bi bi-eye-slash"></i>' : '<i class="bi bi-eye"></i>';
+                }
+            });
+            
+            // Enable editing
+            btnEdit?.addEventListener('click', function() {
+                const inputs = form.querySelectorAll('input:not([type="checkbox"]), textarea, select');
+                inputs.forEach(input => {
+                    if (!input.disabled) {
+                        input.removeAttribute('readonly');
+                        input.removeAttribute('disabled');
+                    }
+                });
+                form.querySelector('input[name="IsActive"]').removeAttribute('disabled');
+                formButtons.style.display = 'block';
+                this.style.display = 'none';
+            });
+            
+            // Cancel editing
+            btnCancel?.addEventListener('click', function() {
+                const inputs = form.querySelectorAll('input:not([type="checkbox"]), textarea, select');
+                inputs.forEach(input => {
+                    input.setAttribute('readonly', 'readonly');
+                });
+                form.querySelector('input[name="IsActive"]').setAttribute('disabled', 'disabled');
+                form.querySelector('select[name="DatabaseTechnology"]').setAttribute('disabled', 'disabled');
+                formButtons.style.display = 'none';
+                btnEdit.style.display = 'inline-block';
+                
+                // Reset connection string
+                if (connStrInput) {
+                    connStrInput.value = originalConnStr;
+                }
+            });
+            
+            // Test connection
+            btnTestConnection?.addEventListener('click', function() {
+                const resultDiv = document.getElementById('connectionTestResult');
+                const btn = this;
+                const originalText = btn.innerHTML;
+                
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Testing...';
+                resultDiv.innerHTML = '';
+                
+                fetch('@Url.Action("TestConnection", "Home", new { id = Model?.Id })', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]')?.value || ''
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        resultDiv.innerHTML = '<div class="alert alert-success"><i class="bi bi-check-circle me-2"></i>' + (data.message || 'Connection successful!') + '</div>';
+                    } else {
+                        resultDiv.innerHTML = '<div class="alert alert-danger"><i class="bi bi-x-circle me-2"></i>' + (data.message || 'Connection failed!') + '</div>';
+                    }
+                })
+                .catch(error => {
+                    resultDiv.innerHTML = '<div class="alert alert-danger"><i class="bi bi-x-circle me-2"></i>Error testing connection</div>';
+                })
+                .finally(() => {
+                    btn.disabled = false;
+                    btn.innerHTML = originalText;
+                });
+            });
+            
+            // Connection Strings Management
+            const btnAddConnectionString = document.getElementById('btnAddConnectionString');
+            if (btnAddConnectionString) {
+                btnAddConnectionString.addEventListener('click', function() {
+                    resetConnectionStringForm();
+                    document.getElementById('connectionStringModalLabel').textContent = 'Add Connection String';
+                    connectionStringModal.show();
+                });
+            }
+            
+            const connectionStringForm = document.getElementById('connectionStringForm');
+            if (connectionStringForm) {
+                connectionStringForm.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    saveConnectionString();
+                });
+            }
+            
+            const btnTestModalConnection = document.getElementById('btnTestModalConnection');
+            if (btnTestModalConnection) {
+                btnTestModalConnection.addEventListener('click', function() {
+                    testModalConnection();
+                });
+            }
+        });
+        
+        function loadConnectionStrings() {
+            // Check if productId is valid
+            if (!productId || productId === '') {
+                const container = document.getElementById('connectionStringsContainer');
+                if (container) {
+                    container.innerHTML = 
+                        '<div class="alert alert-warning"><i class="bi bi-exclamation-triangle me-2"></i>Product ID not found</div>';
+                }
+                return;
+            }
+            
+            // Use MVC controller proxy endpoint
+            fetch(`/Home/GetConnectionStrings?productId=${productId}`, {
+                headers: {
+                    'Accept': 'application/json'
+                }
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.text(); // Get as text first
+                })
+                .then(text => {
+                    // Handle empty response
+                    if (!text || text.trim() === '') {
+                        connectionStrings = [];
+                        renderConnectionStrings();
+                        return;
+                    }
+                    
+                    try {
+                        const data = JSON.parse(text);
+                        connectionStrings = Array.isArray(data) ? data : [];
+                        renderConnectionStrings();
+                    } catch (e) {
+                        connectionStrings = [];
+                        renderConnectionStrings();
+                    }
+                })
+                .catch(error => {
+                    const container = document.getElementById('connectionStringsContainer');
+                    if (container) {
+                        container.innerHTML = 
+                            '<div class="alert alert-warning"><i class="bi bi-exclamation-triangle me-2"></i>Error loading connection strings: ' + error.message + '</div>';
+                    }
+                });
+        }
+        
+        function renderConnectionStrings() {
+            const container = document.getElementById('connectionStringsContainer');
+            
+            if (connectionStrings.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-4">
+                        <i class="bi bi-database-slash fs-1 text-muted"></i>
+                        <p class="mt-2 text-muted">No connection strings configured yet.</p>
+                        <p class="text-muted">Click "Add Connection String" to configure database connections.</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            const html = connectionStrings.map(conn => {
+                const typeIcon = getConnectionTypeIcon(conn.connectionType);
+                const typeColor = getConnectionTypeColor(conn.connectionType);
+                const maskedConnStr = maskConnectionString(conn.connectionString);
+                const statusBadge = conn.isActive ? 
+                    '<span class="badge bg-success">Active</span>' : 
+                    '<span class="badge bg-secondary">Inactive</span>';
+                
+                return `
+                    <div class="card mb-3">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div class="flex-grow-1">
+                                    <h6 class="card-title d-flex align-items-center">
+                                        <i class="bi ${typeIcon} fs-5 ${typeColor} me-2"></i>
+                                        ${getConnectionTypeLabel(conn.connectionType)}
+                                        ${statusBadge}
+                                    </h6>
+                                    <div class="mb-3">
+                                        <label class="form-label small text-muted">Connection String</label>
+                                        <div class="input-group">
+                                            <input type="password" class="form-control font-monospace" 
+                                                   value="${maskedConnStr}" readonly id="connStr_${conn.id}"/>
+                                            <button class="btn btn-outline-secondary" type="button" 
+                                                    onclick="toggleConnectionVisibility('${conn.id}')" 
+                                                    id="btnToggle_${conn.id}" title="Show/Hide">
+                                                <i class="bi bi-eye"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    ${conn.description ? `<p class="card-text small text-muted">${conn.description}</p>` : ''}
+                                    <small class="text-muted">
+                                        Created: ${new Date(conn.createdAt).toLocaleString()}
+                                        ${conn.updatedAt !== conn.createdAt ? ` | Updated: ${new Date(conn.updatedAt).toLocaleString()}` : ''}
+                                    </small>
+                                </div>
+                                <div class="btn-group-vertical ms-3">
+                                    <button class="btn btn-outline-info btn-sm" onclick="testConnectionString('${conn.id}')"
+                                            id="btnTest_${conn.id}">
+                                        <i class="bi bi-plug"></i> Test
+                                    </button>
+                                    <button class="btn btn-outline-primary btn-sm" onclick="editConnectionString('${conn.id}')">
+                                        <i class="bi bi-pencil"></i> Edit
+                                    </button>
+                                    <button class="btn btn-outline-danger btn-sm" onclick="deleteConnectionString('${conn.id}')">
+                                        <i class="bi bi-trash"></i> Delete
+                                    </button>
+                                </div>
+                            </div>
+                            <div id="testResult_${conn.id}" class="mt-3"></div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            container.innerHTML = html;
+        }
+        
+        function getConnectionTypeIcon(type) {
+            switch(type) {
+                case 'Source': return 'bi-database';
+                case 'Target': return 'bi-database-check';
+                case 'Backup': return 'bi-database-dash';
+                default: return 'bi-database';
+            }
+        }
+        
+        function getConnectionTypeColor(type) {
+            switch(type) {
+                case 'Source': return 'text-primary';
+                case 'Target': return 'text-success';
+                case 'Backup': return 'text-warning';
+                default: return 'text-secondary';
+            }
+        }
+        
+        function getConnectionTypeLabel(type) {
+            switch(type) {
+                case 'Source': return 'Production Database (Source)';
+                case 'Target': return 'Obfuscated Database (Target)';
+                case 'Backup': return 'Database Backup';
+                default: return type;
+            }
+        }
+        
+        function maskConnectionString(connStr) {
+            // Mask passwords and sensitive information
+            return connStr.replace(/Password=([^;]+)/gi, 'Password=***')
+                         .replace(/Pwd=([^;]+)/gi, 'Pwd=***')
+                         .replace(/User Id=([^;]+)/gi, 'User Id=***')
+                         .replace(/Uid=([^;]+)/gi, 'Uid=***');
+        }
+        
+        function toggleConnectionVisibility(connId) {
+            const input = document.getElementById(`connStr_${connId}`);
+            const btn = document.getElementById(`btnToggle_${connId}`);
+            const conn = connectionStrings.find(c => c.id === connId);
+            
+            if (input.type === 'password') {
+                input.type = 'text';
+                input.value = conn.connectionString;
+                btn.innerHTML = '<i class="bi bi-eye-slash"></i>';
+            } else {
+                input.type = 'password';
+                input.value = maskConnectionString(conn.connectionString);
+                btn.innerHTML = '<i class="bi bi-eye"></i>';
+            }
+        }
+        
+        function testConnectionString(connId) {
+            const btn = document.getElementById(`btnTest_${connId}`);
+            const resultDiv = document.getElementById(`testResult_${connId}`);
+            const originalText = btn.innerHTML;
+            
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Testing...';
+            resultDiv.innerHTML = '';
+            
+            const conn = connectionStrings.find(c => c.id === connId);
+            if (!conn) {
+                resultDiv.innerHTML = '<div class="alert alert-danger"><i class="bi bi-x-circle me-2"></i>Connection string not found</div>';
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+                return;
+            }
+            
+            // Test the stored connection using its ID (this will use the actual password)
+            fetch('/Home/TestStoredConnectionString', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    id: connId
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                // API returns isSuccessful, not success
+                const isSuccess = data.isSuccessful || data.success;
+                const alertClass = isSuccess ? 'alert-success' : 'alert-danger';
+                const icon = isSuccess ? 'bi-check-circle' : 'bi-x-circle';
+                let message = data.errorMessage || data.message || (isSuccess ? 'Connection successful!' : 'Connection failed!');
+                
+                if (isSuccess && data.serverVersion) {
+                    message += ` (${data.serverVersion})`;
+                }
+                if (isSuccess && data.databaseName) {
+                    message += ` - Database: ${data.databaseName}`;
+                }
+                
+                resultDiv.innerHTML = `<div class="alert ${alertClass}"><i class="bi ${icon} me-2"></i>${message}</div>`;
+            })
+            .catch(error => {
+                resultDiv.innerHTML = '<div class="alert alert-danger"><i class="bi bi-x-circle me-2"></i>Error testing connection</div>';
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            });
+        }
+        
+        function editConnectionString(connId) {
+            const conn = connectionStrings.find(c => c.id === connId);
+            if (!conn) return;
+            
+            document.getElementById('connectionStringId').value = conn.id;
+            document.getElementById('connectionType').value = conn.connectionType;
+            document.getElementById('connectionString').value = conn.connectionString;
+            document.getElementById('description').value = conn.description || '';
+            document.getElementById('isActive').checked = conn.isActive;
+            
+            document.getElementById('connectionStringModalLabel').textContent = 'Edit Connection String';
+            connectionStringModal.show();
+        }
+        
+        function deleteConnectionString(connId) {
+            const conn = connectionStrings.find(c => c.id === connId);
+            if (!conn) return;
+            
+            if (confirm(`Are you sure you want to delete the ${getConnectionTypeLabel(conn.connectionType)} connection string?`)) {
+                fetch(`/Home/DeleteConnectionString?id=${connId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(response => {
+                    if (response.ok) {
+                        loadConnectionStrings(); // Reload the list
+                        showAlert('Connection string deleted successfully', 'success');
+                    } else {
+                        showAlert('Error deleting connection string', 'danger');
+                    }
+                })
+                .catch(error => {
+                    showAlert('Error deleting connection string', 'danger');
+                });
+            }
+        }
+        
+        function resetConnectionStringForm() {
+            document.getElementById('connectionStringForm').reset();
+            document.getElementById('connectionStringId').value = '';
+            document.getElementById('productId').value = productId;
+        }
+        
+        // Load agent assignments for this product
+        function loadAgentAssignments() {
+            fetch('http://localhost:7001/api/agent', {
+                headers: {
+                    'X-API-Key': 'portal-admin-key-2024'
+                }
+            })
+            .then(response => response.json())
+            .then(agents => {
+                const assignedAgents = agents.filter(a => a.status === 1 || a.status === 2); // Online or Busy
+                const container = document.getElementById('agentAssignments');
+                
+                if (assignedAgents.length > 0) {
+                    container.innerHTML = assignedAgents.map(agent => `
+                        <div class="col-md-6">
+                            <div class="card mb-2">
+                                <div class="card-body p-2">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <h6 class="mb-0">
+                                                <i class="bi bi-hdd-rack"></i> ${agent.name}
+                                                <span class="badge ${agent.status === 1 ? 'bg-success' : 'bg-warning'} ms-2">
+                                                    ${agent.status === 1 ? 'Online' : 'Busy'}
+                                                </span>
+                                            </h6>
+                                            <small class="text-muted">${agent.hostName} - ${agent.cpuCores} CPU, ${Math.round(agent.memoryMB / 1024)}GB RAM</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('');
+                } else {
+                    container.innerHTML = `
+                        <div class="col-12">
+                            <div class="alert alert-warning">
+                                <i class="bi bi-exclamation-triangle"></i> No agents are currently assigned to this product.
+                                <a href="/Agents/ProductAssignments" class="alert-link">Assign agents</a>
+                            </div>
+                        </div>
+                    `;
+                }
+            })
+            .catch(error => {
+                console.error('Error loading agents:', error);
+                document.getElementById('agentAssignments').innerHTML = `
+                    <div class="col-12">
+                        <div class="alert alert-danger">
+                            <i class="bi bi-x-circle"></i> Failed to load agent assignments
+                        </div>
+                    </div>
+                `;
+            });
+        }
+        
+        // Trigger pipeline for this product
+        function triggerPipeline(productId) {
+            if (!productId) {
+                alert('Product ID is required');
+                return;
+            }
+            
+            const payload = {
+                productId: productId,
+                executionMode: 'Full',
+                priority: 5,
+                validateOnly: false
+            };
+            
+            fetch('http://localhost:7001/api/pipeline/trigger', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-API-Key': 'portal-admin-key-2024'
+                },
+                body: JSON.stringify(payload)
+            })
+            .then(response => {
+                if (response.ok) {
+                    return response.json();
+                } else {
+                    throw new Error('Failed to trigger pipeline');
+                }
+            })
+            .then(result => {
+                if (result.jobId) {
+                    window.open(`/Pipeline/LiveMonitor/${result.jobId}`, '_blank');
+                    showAlert('Pipeline triggered successfully! Opening monitor...', 'success');
+                }
+            })
+            .catch(error => {
+                console.error('Error triggering pipeline:', error);
+                showAlert('Failed to trigger pipeline: ' + error.message, 'danger');
+            });
+        }
+        
+        // Load agents on page load
+        loadAgentAssignments();
+        
+        function saveConnectionString() {
+            const formData = new FormData(document.getElementById('connectionStringForm'));
+            const connId = formData.get('id');
+            const isUpdate = connId && connId !== '';
+            
+            // Validate required fields
+            if (!formData.get('connectionType')) {
+                showAlert('Please select a connection type', 'warning');
+                return;
+            }
+            if (!formData.get('connectionString')) {
+                showAlert('Please enter a connection string', 'warning');
+                return;
+            }
+            
+            const requestData = {
+                productId: formData.get('productId') || productId,  // Use global productId if form field is empty
+                connectionType: formData.get('connectionType'),
+                connectionString: formData.get('connectionString'),
+                description: formData.get('description') || '',
+                isActive: formData.get('isActive') === 'on'
+            };
+            
+            // Use appropriate endpoint based on whether it's create or update
+            let url, method;
+            if (isUpdate) {
+                requestData.id = connId;
+                url = `/Home/UpdateConnectionString?id=${connId}`;
+                method = 'PUT';
+            } else {
+                url = '/Home/SaveConnectionString';
+                method = 'POST';
+            }
+            
+            fetch(url, {
+                method: method,
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestData)
+            })
+            .then(response => {
+                if (response.ok) {
+                    return response.json();
+                } else {
+                    return response.text().then(text => {
+                        throw new Error(text || 'Failed to save connection string');
+                    });
+                }
+            })
+            .then(data => {
+                // Hide modal
+                const modalElement = document.getElementById('connectionStringModal');
+                const modal = bootstrap.Modal.getInstance(modalElement);
+                if (modal) {
+                    modal.hide();
+                }
+                // Reset form
+                resetConnectionStringForm();
+                // Reload list
+                loadConnectionStrings();
+                showAlert(`Connection string ${isUpdate ? 'updated' : 'created'} successfully`, 'success');
+            })
+            .catch(error => {
+                showAlert(`Error ${isUpdate ? 'updating' : 'creating'} connection string: ${error.message}`, 'danger');
+            });
+        }
+        
+        function testModalConnection() {
+            const connectionString = document.getElementById('connectionString').value;
+            const btn = document.getElementById('btnTestModalConnection');
+            const originalText = btn.innerHTML;
+            
+            if (!connectionString.trim()) {
+                showAlert('Please enter a connection string to test', 'warning');
+                return;
+            }
+            
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Testing...';
+            
+            fetch('/Home/TestConnectionString', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    connectionString: connectionString
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                // API returns isSuccessful, not success
+                const isSuccess = data.isSuccessful || data.success;
+                const alertType = isSuccess ? 'success' : 'danger';
+                let message = data.errorMessage || data.message || (isSuccess ? 'Connection successful!' : 'Connection failed!');
+                
+                if (isSuccess && data.serverVersion) {
+                    message += ` (${data.serverVersion})`;
+                }
+                if (isSuccess && data.databaseName) {
+                    message += ` - Database: ${data.databaseName}`;
+                }
+                
+                showAlert(message, alertType);
+            })
+            .catch(error => {
+                showAlert('Error testing connection', 'danger');
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            });
+        }
+        
+        function showAlert(message, type) {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+            alertDiv.style.position = 'fixed';
+            alertDiv.style.top = '20px';
+            alertDiv.style.right = '20px';
+            alertDiv.style.zIndex = '1060';
+            alertDiv.style.minWidth = '300px';
+            
+            alertDiv.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            
+            document.body.appendChild(alertDiv);
+            
+            // Auto-remove after 5 seconds
+            setTimeout(() => {
+                if (alertDiv.parentNode) {
+                    alertDiv.remove();
+                }
+            }, 5000);
+        }
+    </script>
+}

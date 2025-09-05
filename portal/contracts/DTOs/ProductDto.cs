@@ -19,6 +19,10 @@ public class ProductDto
     [MaxLength(50)]
     public string DatabaseTechnology { get; set; } = string.Empty;
     
+    [Required]
+    [MaxLength(50)]
+    public string Location { get; set; } = "OnPremises"; // OnPremises or Azure
+    
     [MaxLength(255)]
     public string? GlobalSeed { get; set; }
     
@@ -53,6 +57,10 @@ public class CreateProductDto
     [MaxLength(50)]
     public string DatabaseTechnology { get; set; } = string.Empty;
     
+    [Required]
+    [MaxLength(50)]
+    public string Location { get; set; } = "OnPremises"; // OnPremises or Azure
+    
     [MaxLength(255)]
     public string? GlobalSeed { get; set; }
     
@@ -64,6 +72,8 @@ public class CreateProductDto
     
     [MaxLength(500)]
     public string? MappingCacheDirectory { get; set; }
+    
+    public bool IsActive { get; set; } = true;
 }
 
 public class UpdateProductDto
@@ -77,6 +87,9 @@ public class UpdateProductDto
     
     [MaxLength(50)]
     public string? DatabaseTechnology { get; set; }
+    
+    [MaxLength(50)]
+    public string? Location { get; set; } // OnPremises or Azure
     
     [MaxLength(255)]
     public string? GlobalSeed { get; set; }

@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  # On-Premise Agent 1 - MS SQL
+  agent-sql-onprem:
+    build: .
+    container_name: obfuscation-agent-sql
+    environment:
+      - AgentConfiguration__AgentId=agent-sql-onprem-001
+      - AgentConfiguration__AgentName=On-Prem SQL Server Agent
+      - AgentConfiguration__Environment=Production
+      - AgentConfiguration__Location=OnPremises-DataCenter
+      - AgentConfiguration__MaxConcurrentJobs=3
+      - AgentConfiguration__Capabilities__CanProcessSqlServer=true
+      - AgentConfiguration__Capabilities__CanProcessPostgreSQL=false
+      - PortalConfiguration__ApiUrl=${PORTAL_API_URL:-http://host.docker.internal:7001}
+      - PortalConfiguration__ApiKey=${PORTAL_API_KEY:-portal-admin-key-2024}
+      - Logging__LogLevel__Default=Information
+    volumes:
+      - ./logs/agent-sql:/app/logs
+      - ./config/agent-sql:/app/config
+    networks:
+      - obfuscation-network
+    restart: unless-stopped
+
+  # On-Premise Agent 2 - PostgreSQL
+  agent-postgres-onprem:
+    build: .
+    container_name: obfuscation-agent-postgres
+    environment:
+      - AgentConfiguration__AgentId=agent-postgres-onprem-001
+      - AgentConfiguration__AgentName=On-Prem PostgreSQL Agent
+      - AgentConfiguration__Environment=Production
+      - AgentConfiguration__Location=OnPremises-DataCenter
+      - AgentConfiguration__MaxConcurrentJobs=3
+      - AgentConfiguration__Capabilities__CanProcessSqlServer=false
+      - AgentConfiguration__Capabilities__CanProcessPostgreSQL=true
+      - PortalConfiguration__ApiUrl=${PORTAL_API_URL:-http://host.docker.internal:7001}
+      - PortalConfiguration__ApiKey=${PORTAL_API_KEY:-portal-admin-key-2024}
+      - Logging__LogLevel__Default=Information
+    volumes:
+      - ./logs/agent-postgres:/app/logs
+      - ./config/agent-postgres:/app/config
+    networks:
+      - obfuscation-network
+    restart: unless-stopped
+
+  # Template for Azure Agents (will be deployed separately)
+  # agent-azure-template:
+  #   image: ${DOCKER_REGISTRY}/obfuscation-agent:latest
+  #   environment:
+  #     - AgentConfiguration__AgentId=agent-azure-${AGENT_NUMBER}
+  #     - AgentConfiguration__AgentName=Azure SQL Agent ${AGENT_NUMBER}
+  #     - AgentConfiguration__Environment=Production
+  #     - AgentConfiguration__Location=Azure-${AZURE_REGION}
+  #     - AgentConfiguration__MaxConcurrentJobs=5
+  #     - AgentConfiguration__Capabilities__CanProcessSqlServer=true
+  #     - PortalConfiguration__ApiUrl=${PORTAL_API_URL}
+  #     - PortalConfiguration__ApiKey=${PORTAL_API_KEY}
+
+networks:
+  obfuscation-network:
+    driver: bridge
+
+volumes:
+  agent-logs:
+  agent-config:

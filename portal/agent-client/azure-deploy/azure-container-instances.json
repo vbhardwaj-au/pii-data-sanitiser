@@ -1,0 +1,173 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "agentCount": {
+      "type": "int",
+      "defaultValue": 7,
+      "metadata": {
+        "description": "Number of agent instances to deploy"
+      }
+    },
+    "containerImage": {
+      "type": "string",
+      "metadata": {
+        "description": "Docker image for the obfuscation agent"
+      }
+    },
+    "portalApiUrl": {
+      "type": "string",
+      "metadata": {
+        "description": "URL of the Portal API"
+      }
+    },
+    "portalApiKey": {
+      "type": "securestring",
+      "metadata": {
+        "description": "API key for Portal authentication"
+      }
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Location for all resources"
+      }
+    },
+    "cpuCores": {
+      "type": "string",
+      "defaultValue": "2",
+      "metadata": {
+        "description": "Number of CPU cores per agent"
+      }
+    },
+    "memoryInGb": {
+      "type": "string",
+      "defaultValue": "4",
+      "metadata": {
+        "description": "Memory in GB per agent"
+      }
+    }
+  },
+  "variables": {
+    "containerGroupNamePrefix": "obfuscation-agent-azure"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.ContainerInstance/containerGroups",
+      "apiVersion": "2021-09-01",
+      "name": "[concat(variables('containerGroupNamePrefix'), '-', copyIndex(1))]",
+      "location": "[parameters('location')]",
+      "copy": {
+        "name": "agentCopy",
+        "count": "[parameters('agentCount')]"
+      },
+      "properties": {
+        "containers": [
+          {
+            "name": "[concat('agent-', copyIndex(1))]",
+            "properties": {
+              "image": "[parameters('containerImage')]",
+              "resources": {
+                "requests": {
+                  "cpu": "[parameters('cpuCores')]",
+                  "memoryInGb": "[parameters('memoryInGb')]"
+                }
+              },
+              "environmentVariables": [
+                {
+                  "name": "AgentConfiguration__AgentId",
+                  "value": "[concat('agent-azure-', parameters('location'), '-', copyIndex(1))]"
+                },
+                {
+                  "name": "AgentConfiguration__AgentName",
+                  "value": "[concat('Azure SQL Agent ', copyIndex(1), ' - ', parameters('location'))]"
+                },
+                {
+                  "name": "AgentConfiguration__Environment",
+                  "value": "Production"
+                },
+                {
+                  "name": "AgentConfiguration__Location",
+                  "value": "[concat('Azure-', parameters('location'))]"
+                },
+                {
+                  "name": "AgentConfiguration__MaxConcurrentJobs",
+                  "value": "5"
+                },
+                {
+                  "name": "AgentConfiguration__Capabilities__CanProcessSqlServer",
+                  "value": "true"
+                },
+                {
+                  "name": "AgentConfiguration__Capabilities__MaxDatabaseSizeGB",
+                  "value": "1000"
+                },
+                {
+                  "name": "PortalConfiguration__ApiUrl",
+                  "value": "[parameters('portalApiUrl')]"
+                },
+                {
+                  "name": "PortalConfiguration__ApiKey",
+                  "secureValue": "[parameters('portalApiKey')]"
+                },
+                {
+                  "name": "PortalConfiguration__HeartbeatIntervalSeconds",
+                  "value": "30"
+                },
+                {
+                  "name": "PortalConfiguration__JobPollingIntervalSeconds",
+                  "value": "10"
+                },
+                {
+                  "name": "AZURE_SQL_CONNECTION_STRING",
+                  "secureValue": "Managed Identity or Key Vault Reference"
+                }
+              ],
+              "ports": [
+                {
+                  "port": 8080,
+                  "protocol": "TCP"
+                }
+              ]
+            }
+          }
+        ],
+        "osType": "Linux",
+        "restartPolicy": "Always",
+        "ipAddress": {
+          "type": "Private",
+          "ports": [
+            {
+              "port": 8080,
+              "protocol": "TCP"
+            }
+          ]
+        },
+        "diagnostics": {
+          "logAnalytics": {
+            "workspaceId": "[parameters('workspaceId')]",
+            "workspaceKey": "[parameters('workspaceKey')]"
+          }
+        }
+      },
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "tags": {
+        "Application": "ObfuscationAgent",
+        "Environment": "Production",
+        "ManagedBy": "Portal"
+      }
+    }
+  ],
+  "outputs": {
+    "containerGroupIds": {
+      "type": "array",
+      "copy": {
+        "count": "[parameters('agentCount')]",
+        "input": "[resourceId('Microsoft.ContainerInstance/containerGroups', concat(variables('containerGroupNamePrefix'), '-', copyIndex(1)))]"
+      }
+    }
+  }
+}

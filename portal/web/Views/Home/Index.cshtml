@@ -100,14 +100,14 @@
                                         <span>Updated: @product.UpdatedAt.ToString("MMM dd, yyyy")</span>
                                     </div>
                                     <div class="btn-toolbar gap-2 mt-auto">
+                                        <a href="@Url.Action("ProductDetails", "Home", new { id = product.Id })" class="btn btn-info btn-sm">
+                                            <i class="bi bi-info-circle"></i> Details
+                                        </a>
                                         <a href="@Url.Action("ProductMappings", "Home", new { id = product.Id })" class="btn btn-primary btn-sm">
                                             <i class="bi bi-diagram-3"></i> Mappings
                                         </a>
-                                        <button class="btn btn-outline-secondary btn-sm btn-test-conn" data-id="@product.Id" @(string.IsNullOrWhiteSpace(product.ConnectionString) ? "disabled" : null)>
-                                            <i class="bi bi-plug"></i> Test connection
-                                        </button>
-                                        <a href="#" class="btn btn-outline-secondary btn-sm">
-                                            <i class="bi bi-gear"></i> Configure
+                                        <a href="@Url.Action("Scripts", "Pipeline", new { productId = product.Id })" class="btn btn-warning btn-sm">
+                                            <i class="bi bi-code-square"></i> Scripts
                                         </a>
                                     </div>
                                 </div>
@@ -149,6 +149,79 @@
             fetch(url).then(r => r.json()).then(data => {
                 alert((data.success ? 'Success: ' : 'Failed: ') + (data.message || ''));
             }).catch(() => alert('Failed: Error calling API')).finally(() => { btn.disabled = false; btn.innerHTML = old; });
+        });
+
+        // Add Product functionality
+        document.getElementById('btnCreateProduct').addEventListener('click', function() {
+            const form = document.getElementById('addProductForm');
+            const formData = new FormData(form);
+            const body = {};
+            
+            // Build request body from form
+            formData.forEach((value, key) => {
+                if (key === 'BatchSize' || key === 'SqlBatchSize' || key === 'ParallelThreads' || 
+                    key === 'MaxCacheSize' || key === 'CommandTimeoutSeconds') {
+                    body[key] = parseInt(value) || 0;
+                } else {
+                    body[key] = value;
+                }
+            });
+            
+            // Add IsActive checkbox value
+            body.IsActive = document.getElementById('IsActive').checked;
+            
+            // Show loading state
+            const btn = this;
+            btn.disabled = true;
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Creating...';
+            
+            // Clear any previous notices
+            const notice = document.getElementById('addProductNotice');
+            notice.classList.add('d-none');
+            
+            // Send request to proxy endpoint
+            fetch('/Home/CreateProduct', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(body)
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.text().then(text => {
+                        throw new Error(text || 'Failed to create product');
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                // Show success message
+                notice.classList.remove('d-none', 'alert-danger');
+                notice.classList.add('alert-success');
+                notice.textContent = 'Product created successfully!';
+                
+                // Reset form
+                form.reset();
+                document.getElementById('IsActive').checked = true;
+                
+                // Refresh page after 2 seconds
+                setTimeout(() => {
+                    window.location.reload();
+                }, 2000);
+            })
+            .catch(error => {
+                // Show error message
+                notice.classList.remove('d-none', 'alert-success');
+                notice.classList.add('alert-danger');
+                notice.textContent = 'Error: ' + error.message;
+            })
+            .finally(() => {
+                // Reset button state
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            });
         });
     </script>
 }
@@ -226,30 +299,3 @@
   </div>
 </div>
 
-@section Scripts2 {
-  <script>
-    (function(){
-      const btn = document.getElementById('btnCreateProduct');
-      if (!btn) return;
-      btn.addEventListener('click', function(){
-        const form = document.getElementById('addProductForm');
-        const fd = new FormData(form);
-        const body:any = {};
-        fd.forEach((v,k)=> body[k]=v);
-        body.IsActive = (document.getElementById('IsActive') as HTMLInputElement).checked;
-        const baseUrl = '@(ViewBag.ApiBaseUrl ?? "http://localhost:7001/")'.replace(/\/$/, '');
-        fetch(`${baseUrl}/api/products`, {
-          method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
-        }).then(r=>{
-          const notice = document.getElementById('addProductNotice');
-          if (r.ok){ notice.className='alert alert-success'; notice.textContent='Product created'; setTimeout(()=>location.reload(), 800); }
-          else { notice.className='alert alert-danger'; notice.textContent='Failed to create product'; }
-          notice.classList.remove('d-none');
-        }).catch(()=>{
-          const notice = document.getElementById('addProductNotice');
-          notice.className='alert alert-danger'; notice.textContent='Failed to create product'; notice.classList.remove('d-none');
-        });
-      });
-    })();
-  </script>
-}

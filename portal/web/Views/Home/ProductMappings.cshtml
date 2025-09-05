@@ -19,6 +19,22 @@
                     @ViewBag.Error
                 </div>
             }
+            
+            @if (TempData["Error"] != null)
+            {
+                <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                    @TempData["Error"]
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            }
+            
+            @if (TempData["Success"] != null)
+            {
+                <div class="alert alert-success alert-dismissible fade show" role="alert">
+                    @TempData["Success"]
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            }
 
             @if (Model != null)
             {
@@ -33,6 +49,12 @@
                         <button type="button" class="btn btn-outline-secondary" id="btnExportJson">
                             <i class="bi bi-download"></i> Export JSON
                         </button>
+                        <button type="button" class="btn btn-primary" id="btnExportToAzure">
+                            <i class="bi bi-cloud-upload"></i> Export to Azure
+                        </button>
+                        <button type="button" class="btn btn-info" id="btnViewVersions" data-bs-toggle="modal" data-bs-target="#versionsModal">
+                            <i class="bi bi-clock-history"></i> Versions
+                        </button>
                     </div>
                 </div>
 
@@ -46,8 +68,9 @@
                             <div id="globalNotice" class="alert d-none" role="alert"></div>
                             <form id="globalForm" class="row g-3">
                                 <div class="col-12">
-                                    <label class="form-label">Connection string</label>
-                                    <input class="form-control form-control-sm" name="ConnectionString" value="@Model.ConnectionString" />
+                                    <label class="form-label">Production Database Connection String (Source)</label>
+                                    <input class="form-control form-control-sm" name="SourceConnectionString" value="@Model.SourceConnectionString" readonly />
+                                    <small class="form-text text-muted">This connection string is used for schema refresh and data discovery</small>
                                 </div>
                                 <div class="col-md-4">
                                     <label class="form-label">Database Technology</label>
@@ -481,6 +504,219 @@
                     });
                 });
             }
+
+            // Export to Azure Blob Storage
+            const btnExportToAzure = document.getElementById('btnExportToAzure');
+            if (btnExportToAzure) {
+                btnExportToAzure.addEventListener('click', function() {
+                    const productId = '@(ViewBag.ProductId)';
+                    const baseUrl = '@(ViewBag.ApiBaseUrl ?? "http://localhost:7001/")'.replace(/\/$/, '');
+                    
+                    // Show loading state
+                    btnExportToAzure.disabled = true;
+                    btnExportToAzure.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Exporting...';
+                    
+                    fetch(`${baseUrl}/api/MappingStorage/${productId}/export`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            showAlert(`Successfully exported ${data.mappingCount} mappings to Azure Blob Storage. Version: ${data.version}`, 'success');
+                            // Refresh versions if modal is open
+                            if (document.getElementById('versionsModal').classList.contains('show')) {
+                                loadVersions();
+                            }
+                        } else {
+                            showAlert('Failed to export to Azure: ' + (data.error || 'Unknown error'), 'danger');
+                        }
+                    })
+                    .catch(error => {
+                        showAlert('Error exporting to Azure: ' + error.message, 'danger');
+                    })
+                    .finally(() => {
+                        btnExportToAzure.disabled = false;
+                        btnExportToAzure.innerHTML = '<i class="bi bi-cloud-upload"></i> Export to Azure';
+                    });
+                });
+            }
+
+            // Load mapping versions
+            function loadVersions() {
+                const productId = '@(ViewBag.ProductId)';
+                const baseUrl = '@(ViewBag.ApiBaseUrl ?? "http://localhost:7001/")'.replace(/\/$/, '');
+                
+                fetch(`${baseUrl}/api/MappingStorage/${productId}/versions`)
+                    .then(response => response.json())
+                    .then(versions => {
+                        const tbody = document.getElementById('versionsTableBody');
+                        tbody.innerHTML = '';
+                        
+                        if (versions.length === 0) {
+                            tbody.innerHTML = '<tr><td colspan="5" class="text-center">No versions found</td></tr>';
+                            return;
+                        }
+                        
+                        versions.forEach(version => {
+                            const row = `
+                                <tr>
+                                    <td>
+                                        ${version.version}
+                                        ${version.isLatest ? '<span class="badge bg-primary">Latest</span>' : ''}
+                                    </td>
+                                    <td>${new Date(version.createdAt).toLocaleString()}</td>
+                                    <td>${(version.sizeBytes / 1024).toFixed(1)} KB</td>
+                                    <td>${version.createdBy || 'System'}</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-primary me-1" onclick="downloadVersion('${version.version}')">
+                                            <i class="bi bi-download"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-info me-1" onclick="getSasUrl('${version.version}')">
+                                            <i class="bi bi-link-45deg"></i>
+                                        </button>
+                                        ${!version.isLatest ? `<button class="btn btn-sm btn-outline-danger" onclick="deleteVersion('${version.version}')"><i class="bi bi-trash"></i></button>` : ''}
+                                    </td>
+                                </tr>`;
+                            tbody.innerHTML += row;
+                        });
+                    })
+                    .catch(error => {
+                        showAlert('Error loading versions: ' + error.message, 'danger');
+                    });
+            }
+
+            // Download specific version
+            window.downloadVersion = function(version) {
+                const productId = '@(ViewBag.ProductId)';
+                const baseUrl = '@(ViewBag.ApiBaseUrl ?? "http://localhost:7001/")'.replace(/\/$/, '');
+                
+                fetch(`${baseUrl}/api/MappingStorage/${productId}/content?version=${version}`)
+                    .then(response => response.text())
+                    .then(content => {
+                        const blob = new Blob([content], { type: 'application/json' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `mapping-${version}.json`;
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                        URL.revokeObjectURL(url);
+                    })
+                    .catch(error => {
+                        showAlert('Error downloading version: ' + error.message, 'danger');
+                    });
+            };
+
+            // Get SAS URL for version
+            window.getSasUrl = function(version) {
+                const productId = '@(ViewBag.ProductId)';
+                const baseUrl = '@(ViewBag.ApiBaseUrl ?? "http://localhost:7001/")'.replace(/\/$/, '');
+                
+                fetch(`${baseUrl}/api/MappingStorage/${productId}/download-url?version=${version}&expiryHours=168`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            navigator.clipboard.writeText(data.sasUrl).then(() => {
+                                showAlert('SAS URL copied to clipboard (expires: ' + new Date(data.expiresAt).toLocaleString() + ')', 'success');
+                            });
+                        } else {
+                            showAlert('Failed to generate SAS URL: ' + data.error, 'danger');
+                        }
+                    })
+                    .catch(error => {
+                        showAlert('Error generating SAS URL: ' + error.message, 'danger');
+                    });
+            };
+
+            // Delete version
+            window.deleteVersion = function(version) {
+                if (!confirm(`Delete version ${version}?`)) return;
+                
+                const productId = '@(ViewBag.ProductId)';
+                const baseUrl = '@(ViewBag.ApiBaseUrl ?? "http://localhost:7001/")'.replace(/\/$/, '');
+                
+                fetch(`${baseUrl}/api/MappingStorage/${productId}/versions/${version}`, {
+                    method: 'DELETE'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.message) {
+                        showAlert('Version deleted successfully', 'success');
+                        loadVersions();
+                    } else {
+                        showAlert('Failed to delete version: ' + data.error, 'danger');
+                    }
+                })
+                .catch(error => {
+                    showAlert('Error deleting version: ' + error.message, 'danger');
+                });
+            };
+
+            // Show alert function
+            function showAlert(message, type) {
+                const alertDiv = document.createElement('div');
+                alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+                alertDiv.innerHTML = `
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
+                document.querySelector('.container').prepend(alertDiv);
+                
+                setTimeout(() => {
+                    alertDiv.remove();
+                }, 5000);
+            }
+
+            // Load versions when modal is opened
+            const btnViewVersions = document.getElementById('btnViewVersions');
+            if (btnViewVersions) {
+                btnViewVersions.addEventListener('click', loadVersions);
+            }
         })();
     </script>
+}
+
+<!-- Versions Modal -->
+<div class="modal fade" id="versionsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Mapping Versions in Azure Blob Storage</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Version</th>
+                                <th>Created</th>
+                                <th>Size</th>
+                                <th>Created By</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="versionsTableBody">
+                            <tr><td colspan="5" class="text-center">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="mt-3">
+                    <small class="text-muted">
+                        <i class="bi bi-info-circle"></i> 
+                        Download: Download mapping file directly<br>
+                        <i class="bi bi-link-45deg"></i> 
+                        SAS URL: Copy secure agent access URL (7 days validity)<br>
+                        <i class="bi bi-trash"></i> 
+                        Delete: Remove version from storage
+                    </small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
 }

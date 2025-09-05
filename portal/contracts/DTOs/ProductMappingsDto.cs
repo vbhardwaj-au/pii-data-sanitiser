@@ -9,6 +9,7 @@ public class ProductMappingsDto
     public bool IsActive { get; set; }
     // Global settings for export/config editing
     public string ConnectionString { get; set; } = string.Empty;
+    public string SourceConnectionString { get; set; } = string.Empty;
     public string GlobalSeed { get; set; } = string.Empty;
     public int BatchSize { get; set; }
     public int SqlBatchSize { get; set; }

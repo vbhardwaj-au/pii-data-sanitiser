@@ -31,6 +31,50 @@
                             Products
                         </a>
                     </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="agentsDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-hdd-stack"></i>
+                            Agents
+                        </a>
+                        <ul class="dropdown-menu" aria-labelledby="agentsDropdown">
+                            <li><a class="dropdown-item" href="@Url.Action("Index", "Agents")">
+                                <i class="bi bi-list"></i> All Agents
+                            </a></li>
+                            <li><a class="dropdown-item" href="@Url.Action("ProductAssignments", "Agents")">
+                                <i class="bi bi-diagram-3"></i> Product Assignments
+                            </a></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="@Url.Action("Dashboard", "Pipeline")">
+                            <i class="bi bi-speedometer2"></i>
+                            Pipeline Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="@Url.Action("Monitor", "Pipeline")">
+                            <i class="bi bi-tv"></i>
+                            Monitor
+                        </a>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="pipelineDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-layers"></i>
+                            Pipeline
+                        </a>
+                        <ul class="dropdown-menu" aria-labelledby="pipelineDropdown">
+                            <li><a class="dropdown-item" href="@Url.Action("ExecutionHistory", "Pipeline")">
+                                <i class="bi bi-clock-history"></i> Execution History
+                            </a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="@Url.Action("Scripts", "Pipeline", new { productId = ViewBag.CurrentProductId ?? "" })">
+                                <i class="bi bi-code-square"></i> Manage Scripts
+                            </a></li>
+                            <li><a class="dropdown-item" href="@Url.Action("Configure", "Pipeline", new { productId = ViewBag.CurrentProductId ?? "" })">
+                                <i class="bi bi-gear"></i> Configure Pipeline
+                            </a></li>
+                        </ul>
+                    </li>
                 </ul>
                 <ul class="navbar-nav">
                     <li class="nav-item">

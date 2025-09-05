@@ -14,6 +14,13 @@ public class MappingProfile : Profile
         CreateMap<Product, ProductMappingsDto>()
             .ForMember(dest => dest.Tables, opt => opt.MapFrom(src => src.DatabaseSchemas))
             .ForMember(dest => dest.ConnectionString, opt => opt.MapFrom(src => src.ConnectionString))
+            .ForMember(dest => dest.SourceConnectionString, opt => opt.MapFrom(src => 
+                src.ProductConnectionStrings
+                    .Where(pcs => pcs.ConnectionType == "Source" && pcs.IsActive)
+                    .FirstOrDefault() != null ? 
+                src.ProductConnectionStrings
+                    .Where(pcs => pcs.ConnectionType == "Source" && pcs.IsActive)
+                    .First().ConnectionString : string.Empty))
             .ForMember(dest => dest.GlobalSeed, opt => opt.MapFrom(src => src.GlobalSeed))
             .ForMember(dest => dest.BatchSize, opt => opt.MapFrom(src => src.BatchSize))
             .ForMember(dest => dest.SqlBatchSize, opt => opt.MapFrom(src => src.SqlBatchSize))
@@ -35,5 +42,20 @@ public class MappingProfile : Profile
         // ColumnObfuscationMapping mappings
         CreateMap<ColumnObfuscationMapping, ColumnObfuscationMappingDto>();
         CreateMap<ColumnObfuscationMapping, ObfuscationMappingDto>();
+
+        // ProductConnectionString mappings
+        CreateMap<ProductConnectionString, ProductConnectionStringDto>();
+
+        // PipelineStage mappings
+        CreateMap<PipelineStage, PipelineStageDto>();
+
+        // ProductPipelineConfiguration mappings
+        CreateMap<ProductPipelineConfiguration, ProductPipelineConfigurationDto>();
+
+        // PipelineStageScript mappings
+        CreateMap<PipelineStageScript, PipelineStageScriptDto>();
+
+        // ScriptExecutionLog mappings
+        CreateMap<ScriptExecutionLog, ScriptExecutionLogDto>();
     }
 }

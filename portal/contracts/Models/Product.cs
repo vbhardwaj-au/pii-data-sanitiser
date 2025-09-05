@@ -19,6 +19,10 @@ public class Product
     [MaxLength(50)]
     public string DatabaseTechnology { get; set; } = string.Empty;
     
+    [Required]
+    [MaxLength(50)]
+    public string Location { get; set; } = "OnPremises"; // OnPremises, Azure
+    
     [MaxLength(255)]
     public string? GlobalSeed { get; set; }
     
@@ -41,4 +45,8 @@ public class Product
     public virtual ICollection<DatabaseSchema> DatabaseSchemas { get; set; } = new List<DatabaseSchema>();
     public virtual ICollection<ObfuscationConfiguration> ObfuscationConfigurations { get; set; } = new List<ObfuscationConfiguration>();
     public virtual ICollection<ColumnObfuscationMapping> ColumnObfuscationMappings { get; set; } = new List<ColumnObfuscationMapping>();
+    public virtual ICollection<ProductConnectionString> ProductConnectionStrings { get; set; } = new List<ProductConnectionString>();
+    public virtual ICollection<ProductPipelineConfiguration> ProductPipelineConfigurations { get; set; } = new List<ProductPipelineConfiguration>();
+    public virtual ICollection<PipelineStageScript> PipelineStageScripts { get; set; } = new List<PipelineStageScript>();
+    public virtual ICollection<PipelineExecution> PipelineExecutions { get; set; } = new List<PipelineExecution>();
 }

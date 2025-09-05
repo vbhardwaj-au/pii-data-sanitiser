@@ -1,0 +1,325 @@
+@model Contracts.DTOs.PipelineStageScriptDto
+@{
+    ViewData["Title"] = Model?.Id == Guid.Empty ? "New Script" : $"Edit Script - {Model?.Name ?? "Unknown"}";
+}
+
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>
+            <i class="bi bi-code-slash"></i> @ViewData["Title"]
+        </h1>
+        <div>
+            <button class="btn btn-success" onclick="saveScript()">
+                <i class="bi bi-save"></i> Save Script
+            </button>
+            <button class="btn btn-primary" onclick="validateScript()">
+                <i class="bi bi-shield-check"></i> Validate
+            </button>
+            <a href="@Url.Action("Configure", "Pipeline", new { productId = ViewBag.ProductId })" class="btn btn-secondary">
+                <i class="bi bi-arrow-left"></i> Back to Configuration
+            </a>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Script Details -->
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header bg-dark text-white">
+                    <h5 class="mb-0">Script Details</h5>
+                </div>
+                <div class="card-body">
+                    <form id="scriptForm">
+                        <input type="hidden" id="scriptId" value="@Model?.Id" />
+                        <input type="hidden" id="productId" value="@ViewBag.ProductId" />
+                        <input type="hidden" id="stageId" value="@ViewBag.StageId" />
+                        
+                        <div class="mb-3">
+                            <label for="scriptName" class="form-label">Name <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="scriptName" value="@Model?.Name" required>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="scriptDescription" class="form-label">Description</label>
+                            <textarea class="form-control" id="scriptDescription" rows="3">@Model?.Description</textarea>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="timeoutMinutes" class="form-label">Timeout (minutes)</label>
+                            <input type="number" class="form-control" id="timeoutMinutes" 
+                                   value="@(Model?.TimeoutMinutes ?? 30)" min="1" max="1440">
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="onFailureAction" class="form-label">On Failure</label>
+                            <select class="form-select" id="onFailureAction">
+                                <option value="Stop" selected="@(Model?.OnFailureAction == "Stop")">Stop Pipeline</option>
+                                <option value="Skip" selected="@(Model?.OnFailureAction == "Skip")">Skip Script</option>
+                                <option value="Warn" selected="@(Model?.OnFailureAction == "Warn")">Warn and Continue</option>
+                            </select>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="retryAttempts" class="form-label">Retry Attempts</label>
+                            <input type="number" class="form-control" id="retryAttempts" 
+                                   value="@(Model?.RetryAttempts ?? 0)" min="0" max="10">
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="retryDelaySeconds" class="form-label">Retry Delay (seconds)</label>
+                            <input type="number" class="form-control" id="retryDelaySeconds" 
+                                   value="@(Model?.RetryDelaySeconds ?? 30)" min="1" max="3600">
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="executionOrder" class="form-label">Execution Order</label>
+                            <input type="number" class="form-control" id="executionOrder" 
+                                   value="@(Model?.ExecutionOrder ?? 1)" min="1" max="999">
+                        </div>
+                        
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="isEnabled" 
+                                   @(Model?.IsEnabled != false ? "checked" : "")>
+                            <label class="form-check-label" for="isEnabled">
+                                Enable Script
+                            </label>
+                        </div>
+                        
+                        <hr/>
+                        
+                        <h6>Expected Results</h6>
+                        
+                        <div class="mb-3">
+                            <label for="expectedResultType" class="form-label">Result Type</label>
+                            <select class="form-select" id="expectedResultType">
+                                <option value="None" selected="@(Model?.ExpectedResultType == "None")">None</option>
+                                <option value="RowCount" selected="@(Model?.ExpectedResultType == "RowCount")">Row Count</option>
+                                <option value="Scalar" selected="@(Model?.ExpectedResultType == "Scalar")">Scalar Value</option>
+                                <option value="ResultSet" selected="@(Model?.ExpectedResultType == "ResultSet")">Result Set</option>
+                            </select>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="expectedMinRows" class="form-label">Min Rows</label>
+                            <input type="number" class="form-control" id="expectedMinRows" 
+                                   value="@Model?.ExpectedMinRows" min="0">
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="expectedMaxRows" class="form-label">Max Rows</label>
+                            <input type="number" class="form-control" id="expectedMaxRows" 
+                                   value="@Model?.ExpectedMaxRows" min="0">
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="tags" class="form-label">Tags</label>
+                            <input type="text" class="form-control" id="tags" value="@Model?.Tags" 
+                                   placeholder="Comma-separated tags">
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <!-- SQL Editor -->
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header bg-dark text-white">
+                    <h5 class="mb-0">
+                        SQL Script Editor
+                        <div class="float-end">
+                            <button class="btn btn-sm btn-light" onclick="formatSQL()">
+                                <i class="bi bi-indent"></i> Format
+                            </button>
+                            <button class="btn btn-sm btn-light" onclick="clearEditor()">
+                                <i class="bi bi-x-circle"></i> Clear
+                            </button>
+                        </div>
+                    </h5>
+                </div>
+                <div class="card-body p-0">
+                    <div id="sqlEditor" style="height: 500px; font-size: 14px;">@Model?.SqlScript</div>
+                </div>
+            </div>
+            
+            <!-- Validation Results -->
+            <div class="card mt-3" id="validationResults" style="display: none;">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-shield-check"></i> Validation Results
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div id="validationContent"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <!-- Include Monaco Editor for SQL syntax highlighting -->
+    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
+    <script>
+        let editor;
+        
+        // Initialize Monaco Editor
+        require.config({ paths: { 'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' }});
+        require(['vs/editor/editor.main'], function() {
+            editor = monaco.editor.create(document.getElementById('sqlEditor'), {
+                value: @Html.Raw(Json.Serialize(Model?.SqlScript ?? "")),
+                language: 'sql',
+                theme: 'vs-dark',
+                automaticLayout: true,
+                minimap: { enabled: false },
+                fontSize: 14,
+                wordWrap: 'on',
+                scrollBeyondLastLine: false,
+                renderWhitespace: 'selection',
+                suggestOnTriggerCharacters: true,
+                quickSuggestions: true,
+                lineNumbers: 'on',
+                glyphMargin: true,
+                folding: true,
+                contextmenu: true,
+                cursorBlinking: 'smooth',
+                smoothScrolling: true,
+                mouseWheelZoom: true
+            });
+            
+            // Add keyboard shortcuts
+            editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KEY_S, function() {
+                saveScript();
+            });
+            
+            editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KEY_D, function() {
+                validateScript();
+            });
+        });
+        
+        function saveScript() {
+            const scriptData = {
+                id: document.getElementById('scriptId').value || '00000000-0000-0000-0000-000000000000',
+                productId: document.getElementById('productId').value,
+                pipelineStageId: document.getElementById('stageId').value,
+                name: document.getElementById('scriptName').value,
+                description: document.getElementById('scriptDescription').value,
+                sqlScript: editor.getValue(),
+                timeoutMinutes: parseInt(document.getElementById('timeoutMinutes').value),
+                onFailureAction: document.getElementById('onFailureAction').value,
+                retryAttempts: parseInt(document.getElementById('retryAttempts').value),
+                retryDelaySeconds: parseInt(document.getElementById('retryDelaySeconds').value),
+                executionOrder: parseInt(document.getElementById('executionOrder').value),
+                isEnabled: document.getElementById('isEnabled').checked,
+                expectedResultType: document.getElementById('expectedResultType').value,
+                expectedMinRows: document.getElementById('expectedMinRows').value ? parseInt(document.getElementById('expectedMinRows').value) : null,
+                expectedMaxRows: document.getElementById('expectedMaxRows').value ? parseInt(document.getElementById('expectedMaxRows').value) : null,
+                tags: document.getElementById('tags').value
+            };
+            
+            if (!scriptData.name) {
+                alert('Script name is required');
+                return;
+            }
+            
+            if (!scriptData.sqlScript) {
+                alert('SQL script content is required');
+                return;
+            }
+            
+            fetch('/Pipeline/SaveScript', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(scriptData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Script saved successfully!');
+                    if (!document.getElementById('scriptId').value) {
+                        document.getElementById('scriptId').value = data.script.id;
+                    }
+                } else {
+                    alert('Failed to save script: ' + data.error);
+                }
+            });
+        }
+        
+        function validateScript() {
+            const sqlScript = editor.getValue();
+            
+            if (!sqlScript) {
+                alert('Please enter SQL script to validate');
+                return;
+            }
+            
+            fetch('/Pipeline/ValidateScript', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(sqlScript)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    displayValidationResults(data.validation);
+                } else {
+                    alert('Validation failed: ' + data.error);
+                }
+            });
+        }
+        
+        function displayValidationResults(validation) {
+            const resultsDiv = document.getElementById('validationResults');
+            const contentDiv = document.getElementById('validationContent');
+            
+            let html = '';
+            
+            if (validation.isValid) {
+                html = '<div class="alert alert-success"><i class="bi bi-check-circle"></i> Script is valid!</div>';
+            } else {
+                html = '<div class="alert alert-danger"><i class="bi bi-x-circle"></i> Script validation failed</div>';
+            }
+            
+            if (validation.warnings && validation.warnings.length > 0) {
+                html += '<h6>Warnings:</h6><ul class="list-group mb-3">';
+                validation.warnings.forEach(warning => {
+                    html += '<li class="list-group-item list-group-item-warning"><i class="bi bi-exclamation-triangle"></i> ' + warning + '</li>';
+                });
+                html += '</ul>';
+            }
+            
+            if (validation.securityIssues && validation.securityIssues.length > 0) {
+                html += '<h6>Security Issues:</h6><ul class="list-group mb-3">';
+                validation.securityIssues.forEach(issue => {
+                    html += '<li class="list-group-item list-group-item-danger"><i class="bi bi-shield-x"></i> ' + 
+                            (issue.description || issue) + '</li>';
+                });
+                html += '</ul>';
+            }
+            
+            contentDiv.innerHTML = html;
+            resultsDiv.style.display = 'block';
+        }
+        
+        function formatSQL() {
+            // Simple SQL formatting (in production, use a proper SQL formatter)
+            let sql = editor.getValue();
+            sql = sql.replace(/\s+/g, ' ')
+                     .replace(/,/g, ',\n    ')
+                     .replace(/SELECT/gi, 'SELECT\n    ')
+                     .replace(/FROM/gi, '\nFROM')
+                     .replace(/WHERE/gi, '\nWHERE')
+                     .replace(/AND/gi, '\n    AND')
+                     .replace(/OR/gi, '\n    OR')
+                     .replace(/ORDER BY/gi, '\nORDER BY')
+                     .replace(/GROUP BY/gi, '\nGROUP BY');
+            editor.setValue(sql);
+        }
+        
+        function clearEditor() {
+            if (confirm('Are you sure you want to clear the editor?')) {
+                editor.setValue('');
+            }
+        }
+    </script>
+}

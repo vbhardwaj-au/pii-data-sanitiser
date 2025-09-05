@@ -64,6 +64,25 @@ public class GetProductMappingsQueryHandler : IRequestHandler<GetProductMappings
             // Non-fatal: if live check fails, fall back to whatever we have stored
         }
 
-        return _mapper.Map<ProductMappingsDto>(product);
+        var result = _mapper.Map<ProductMappingsDto>(product);
+        
+        // Debug logging
+        Console.WriteLine($"ProductConnectionStrings count: {product.ProductConnectionStrings?.Count ?? 0}");
+        if (product.ProductConnectionStrings != null)
+        {
+            foreach (var pcs in product.ProductConnectionStrings)
+            {
+                Console.WriteLine($"Connection: Type={pcs.ConnectionType}, Active={pcs.IsActive}");
+            }
+        }
+        
+        // Manually set the SourceConnectionString since AutoMapper complex expression isn't working
+        var sourceConnection = product.ProductConnectionStrings?
+            .FirstOrDefault(pcs => pcs.ConnectionType == "Source" && pcs.IsActive);
+        result.SourceConnectionString = sourceConnection?.ConnectionString ?? string.Empty;
+        
+        Console.WriteLine($"Final SourceConnectionString: {(!string.IsNullOrEmpty(result.SourceConnectionString) ? "SET" : "EMPTY")}");
+        
+        return result;
     }
 }

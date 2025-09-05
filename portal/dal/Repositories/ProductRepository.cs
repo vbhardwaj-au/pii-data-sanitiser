@@ -34,6 +34,7 @@ public class ProductRepository : IProductRepository
             .Include(p => p.DatabaseSchemas)
                 .ThenInclude(ds => ds.TableColumns)
                     .ThenInclude(tc => tc.ColumnObfuscationMapping)
+            .Include(p => p.ProductConnectionStrings)
             .FirstOrDefaultAsync(p => p.Id == id);
     }
 
@@ -43,6 +44,7 @@ public class ProductRepository : IProductRepository
             .Include(p => p.DatabaseSchemas)
                 .ThenInclude(ds => ds.TableColumns)
                     .ThenInclude(tc => tc.ColumnObfuscationMapping)
+            .Include(p => p.ProductConnectionStrings)
             .FirstOrDefaultAsync(p => p.Name == name);
     }
 

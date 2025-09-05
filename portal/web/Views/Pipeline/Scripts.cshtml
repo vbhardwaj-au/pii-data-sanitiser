@@ -1,0 +1,508 @@
+@model IEnumerable<Contracts.Models.PipelineStageScript>
+@{
+    ViewData["Title"] = $"SQL Scripts - {ViewBag.ProductName}";
+    var stages = ViewBag.Stages as List<Contracts.Models.PipelineStage> ?? new List<Contracts.Models.PipelineStage>();
+    var productId = ViewBag.ProductId;
+}
+
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-12">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home")">Products</a></li>
+                    <li class="breadcrumb-item"><a href="@Url.Action("ProductDetails", "Home", new { id = productId })">@ViewBag.ProductName</a></li>
+                    <li class="breadcrumb-item active" aria-current="page">SQL Scripts</li>
+                </ol>
+            </nav>
+
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="mb-0">Pipeline SQL Scripts Management</h2>
+                    <p class="text-muted mb-0">Configure SQL scripts for each pipeline stage. All products use these 5 standard stages.</p>
+                </div>
+                <div class="card-body">
+                    @if (ViewBag.Error != null)
+                    {
+                        <div class="alert alert-danger" role="alert">
+                            @ViewBag.Error
+                        </div>
+                    }
+
+                    <!-- Stage Cards Grid -->
+                    <div class="row g-3 mb-4">
+                        @foreach (var stage in stages.OrderBy(s => s.ExecutionOrder))
+                        {
+                            var stageScripts = Model?.Where(s => s.PipelineStageId == stage.Id) ?? Enumerable.Empty<Contracts.Models.PipelineStageScript>();
+                            var scriptCount = stageScripts.Count();
+                            var activeCount = stageScripts.Count(s => s.IsEnabled);
+                            var hasScripts = scriptCount > 0;
+                            
+                            <div class="col-md-6 col-lg-4">
+                                <div class="card h-100 stage-card @(hasScripts ? "has-scripts" : "no-scripts") @(stage.IsRequired ? "required" : "")">
+                                    <div class="card-header stage-header">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <span class="badge bg-primary me-2">Stage @stage.ExecutionOrder</span>
+                                                <strong>@stage.DisplayName</strong>
+                                            </div>
+                                            @if (stage.IsRequired)
+                                            {
+                                                <span class="badge bg-danger" title="This stage is required">Required</span>
+                                            }
+                                        </div>
+                                    </div>
+                                    <div class="card-body">
+                                        <p class="text-muted small">@stage.Description</p>
+                                        
+                                        <div class="stage-stats mb-3">
+                                            @if (hasScripts)
+                                            {
+                                                <div class="d-flex justify-content-between">
+                                                    <span><i class="bi bi-file-code text-success"></i> @scriptCount script(s)</span>
+                                                    <span><i class="bi bi-check-circle text-info"></i> @activeCount active</span>
+                                                </div>
+                                            }
+                                            else
+                                            {
+                                                <div class="text-center text-muted">
+                                                    <i class="bi bi-inbox fs-3"></i>
+                                                    <p class="mb-0">No scripts configured</p>
+                                                </div>
+                                            }
+                                        </div>
+                                        
+                                        <div class="stage-info small text-muted mb-3">
+                                            <div><i class="bi bi-clock"></i> Timeout: @stage.DefaultTimeoutMinutes min</div>
+                                            @if (stage.SupportsParallelExecution)
+                                            {
+                                                <div><i class="bi bi-lightning"></i> Supports parallel execution</div>
+                                            }
+                                        </div>
+                                        
+                                        <div class="d-grid gap-2">
+                                            <button class="btn btn-outline-primary btn-sm" onclick="viewStageScripts('@stage.Id', '@stage.DisplayName')">
+                                                <i class="bi bi-eye"></i> View Scripts
+                                            </button>
+                                            <button class="btn btn-success btn-sm" onclick="newScriptForStage('@stage.Id', '@stage.DisplayName')">
+                                                <i class="bi bi-plus"></i> Add Script
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+
+                    <!-- Detailed Scripts Accordion -->
+                    <h3 class="mb-3">Detailed Script Configuration</h3>
+                    <div class="accordion" id="stagesAccordion">
+                        @foreach (var stage in stages.OrderBy(s => s.ExecutionOrder))
+                        {
+                            var stageScripts = Model?.Where(s => s.PipelineStageId == stage.Id).OrderBy(s => s.ExecutionOrder) ?? Enumerable.Empty<Contracts.Models.PipelineStageScript>();
+                            var stageId = $"stage_{stage.Id.ToString().Replace("-", "")}";
+                            
+                            <div class="accordion-item">
+                                <h2 class="accordion-header">
+                                    <button class="accordion-button @(stageScripts.Any() ? "" : "collapsed")" type="button" 
+                                            data-bs-toggle="collapse" data-bs-target="#@stageId" 
+                                            aria-expanded="@(stageScripts.Any() ? "true" : "false")" aria-controls="@stageId">
+                                        <span class="badge bg-primary me-2">@stage.ExecutionOrder</span>
+                                        <strong>@stage.DisplayName</strong>
+                                        <span class="badge bg-secondary ms-2">@stageScripts.Count() scripts</span>
+                                        @if (stage.IsRequired)
+                                        {
+                                            <span class="badge bg-danger ms-2">Required</span>
+                                        }
+                                    </button>
+                                </h2>
+                                <div id="@stageId" class="accordion-collapse collapse @(stageScripts.Any() ? "show" : "")" 
+                                     data-bs-parent="#stagesAccordion">
+                                    <div class="accordion-body">
+                                        <p class="text-muted">@stage.Description</p>
+                                        
+                                        <div class="table-responsive">
+                                            <table class="table table-sm">
+                                                <thead>
+                                                    <tr>
+                                                        <th width="50">Order</th>
+                                                        <th>Script Name</th>
+                                                        <th width="100">Status</th>
+                                                        <th width="150">Created</th>
+                                                        <th width="150">Updated</th>
+                                                        <th width="150">Actions</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @if (stageScripts.Any())
+                                                    {
+                                                        @foreach (var script in stageScripts)
+                                                        {
+                                                            <tr>
+                                                                <td>@script.ExecutionOrder</td>
+                                                                <td>
+                                                                    <strong>@script.Name</strong>
+                                                                    @if (!string.IsNullOrEmpty(script.Description))
+                                                                    {
+                                                                        <br /><small class="text-muted">@script.Description</small>
+                                                                    }
+                                                                </td>
+                                                                <td>
+                                                                    @if (script.IsEnabled)
+                                                                    {
+                                                                        <span class="badge bg-success">Active</span>
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        <span class="badge bg-secondary">Inactive</span>
+                                                                    }
+                                                                </td>
+                                                                <td><small>@script.CreatedAt.ToString("MM/dd/yyyy HH:mm")</small></td>
+                                                                <td><small>@script.UpdatedAt.ToString("MM/dd/yyyy HH:mm")</small></td>
+                                                                <td>
+                                                                    <div class="btn-group btn-group-sm">
+                                                                        <button class="btn btn-outline-primary" onclick='editScript(@Html.Raw(JsonSerializer.Serialize(script)))'>
+                                                                            <i class="bi bi-pencil"></i>
+                                                                        </button>
+                                                                        <button class="btn btn-outline-info" onclick='viewScript(@Html.Raw(JsonSerializer.Serialize(script)))'>
+                                                                            <i class="bi bi-eye"></i>
+                                                                        </button>
+                                                                        <button class="btn btn-outline-danger" onclick="deleteScript('@script.Id', '@script.Name')">
+                                                                            <i class="bi bi-trash"></i>
+                                                                        </button>
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        }
+                                                    }
+                                                    else
+                                                    {
+                                                        <tr>
+                                                            <td colspan="6" class="text-center text-muted">
+                                                                No scripts configured for this stage
+                                                                <button class="btn btn-sm btn-link" onclick="newScriptForStage('@stage.Id', '@stage.DisplayName')">
+                                                                    Add first script
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    }
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        
+                                        <button class="btn btn-success btn-sm mt-2" onclick="newScriptForStage('@stage.Id', '@stage.DisplayName')">
+                                            <i class="bi bi-plus"></i> Add Script to @stage.DisplayName
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Script Modal -->
+<div class="modal fade" id="scriptModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="scriptModalTitle">Script Editor</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="scriptForm">
+                    <input type="hidden" id="scriptId" />
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Script Name</label>
+                            <input type="text" class="form-control" id="scriptName" required />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Pipeline Stage</label>
+                            <select class="form-select" id="scriptStage" required>
+                                <option value="">Select Stage</option>
+                                @foreach (var stage in stages.OrderBy(s => s.ExecutionOrder))
+                                {
+                                    <option value="@stage.Id">@stage.ExecutionOrder. @stage.DisplayName</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Execution Order</label>
+                            <input type="number" class="form-control" id="scriptOrder" value="1" min="1" required />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Timeout (minutes)</label>
+                            <input type="number" class="form-control" id="scriptTimeout" value="30" min="1" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Status</label>
+                            <div class="form-check mt-2">
+                                <input class="form-check-input" type="checkbox" id="scriptActive" checked />
+                                <label class="form-check-label" for="scriptActive">Active</label>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">SQL Script Content</label>
+                            <textarea class="form-control font-monospace" id="scriptContent" rows="15" required 
+                                      placeholder="-- Enter your SQL script here&#10;-- Use GO statements to separate batches&#10;"></textarea>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Description (optional)</label>
+                            <input type="text" class="form-control" id="scriptDescription" />
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveScript()">Save Script</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- View Script Modal -->
+<div class="modal fade" id="viewScriptModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="viewScriptTitle">View Script</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <pre class="bg-light p-3"><code id="viewScriptContent"></code></pre>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    @using System.Text.Json
+    <script>
+        const productId = '@productId';
+        
+        function viewStageScripts(stageId, stageName) {
+            // Collapse all other accordions and expand the selected one
+            const accordion = document.getElementById('stagesAccordion');
+            const targetId = 'stage_' + stageId.replace(/-/g, '');
+            const targetCollapse = document.getElementById(targetId);
+            
+            if (targetCollapse) {
+                // Scroll to the accordion
+                document.getElementById('stagesAccordion').scrollIntoView({ behavior: 'smooth', block: 'center' });
+                
+                // Open the specific accordion
+                const bsCollapse = new bootstrap.Collapse(targetCollapse, { show: true });
+            }
+        }
+        
+        function newScript() {
+            document.getElementById('scriptModalTitle').textContent = 'New Script';
+            document.getElementById('scriptForm').reset();
+            document.getElementById('scriptId').value = '';
+            document.getElementById('scriptActive').checked = true;
+        }
+        
+        function newScriptForStage(stageId, stageName) {
+            newScript();
+            document.getElementById('scriptStage').value = stageId;
+            document.getElementById('scriptModalTitle').textContent = `New Script for ${stageName}`;
+            const modal = new bootstrap.Modal(document.getElementById('scriptModal'));
+            modal.show();
+        }
+        
+        function editScript(script) {
+            document.getElementById('scriptModalTitle').textContent = 'Edit Script';
+            document.getElementById('scriptId').value = script.id;
+            document.getElementById('scriptName').value = script.name;
+            document.getElementById('scriptStage').value = script.pipelineStageId;
+            document.getElementById('scriptOrder').value = script.executionOrder;
+            document.getElementById('scriptTimeout').value = script.timeoutMinutes || 30;
+            document.getElementById('scriptActive').checked = script.isEnabled;
+            document.getElementById('scriptContent').value = script.sqlScript;
+            document.getElementById('scriptDescription').value = script.description || '';
+            const modal = new bootstrap.Modal(document.getElementById('scriptModal'));
+            modal.show();
+        }
+        
+        function viewScript(script) {
+            document.getElementById('viewScriptTitle').textContent = script.name;
+            document.getElementById('viewScriptContent').textContent = script.sqlScript;
+            const modal = new bootstrap.Modal(document.getElementById('viewScriptModal'));
+            modal.show();
+        }
+        
+        function saveScript() {
+            const scriptId = document.getElementById('scriptId').value;
+            const stageId = document.getElementById('scriptStage').value;
+            const name = document.getElementById('scriptName').value;
+            const scriptContent = document.getElementById('scriptContent').value;
+            const executionOrder = parseInt(document.getElementById('scriptOrder').value);
+            const isActive = document.getElementById('scriptActive').checked;
+            
+            if (!stageId || !name || !scriptContent) {
+                alert('Please fill in all required fields');
+                return;
+            }
+            
+            fetch('@Url.Action("SaveScript", "Pipeline")', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: new URLSearchParams({
+                    productId: productId,
+                    stageId: stageId,
+                    scriptId: scriptId || '',
+                    name: name,
+                    scriptContent: scriptContent,
+                    executionOrder: executionOrder,
+                    isActive: isActive
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert('Failed to save script: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(error => {
+                alert('Error saving script: ' + error);
+            });
+        }
+        
+        function deleteScript(scriptId, scriptName) {
+            if (!confirm(`Are you sure you want to delete the script "${scriptName}"?`)) {
+                return;
+            }
+            
+            fetch('@Url.Action("DeleteScript", "Pipeline")', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: new URLSearchParams({
+                    productId: productId,
+                    scriptId: scriptId
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert('Failed to delete script: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(error => {
+                alert('Error deleting script: ' + error);
+            });
+        }
+    </script>
+}
+
+@section Styles {
+    <style>
+        /* Stage Cards Styling */
+        .stage-card {
+            border: 2px solid #dee2e6;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .stage-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        
+        .stage-card.has-scripts {
+            border-color: #28a745;
+        }
+        
+        .stage-card.has-scripts .stage-header {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+        }
+        
+        .stage-card.no-scripts {
+            border-color: #ffc107;
+            border-style: dashed;
+        }
+        
+        .stage-card.no-scripts .stage-header {
+            background: linear-gradient(135deg, #ffc107 0%, #fd7e14 100%);
+            color: white;
+        }
+        
+        .stage-card.required.no-scripts {
+            border-color: #dc3545;
+        }
+        
+        .stage-header {
+            font-size: 0.95rem;
+            padding: 0.75rem 1rem;
+        }
+        
+        .stage-stats {
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            min-height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .stage-info {
+            border-top: 1px solid #dee2e6;
+            padding-top: 10px;
+        }
+        
+        /* Accordion Styling */
+        .accordion-button:not(.collapsed) {
+            background-color: #f8f9fa;
+        }
+        
+        .table-responsive {
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        
+        #scriptContent {
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+        
+        pre code {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        
+        /* Stage indicators */
+        .stage-card.has-scripts::before {
+            content: '✓';
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            background: #28a745;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+    </style>
+}

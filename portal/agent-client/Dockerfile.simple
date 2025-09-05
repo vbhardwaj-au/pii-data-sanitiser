@@ -1,0 +1,44 @@
+# Simple Dockerfile that copies pre-built binaries
+# Build the agent first using: dotnet publish -c Release -o ./publish
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+WORKDIR /app
+
+# Install SQL Server tools for different database types
+RUN apt-get update && \
+    apt-get install -y \
+    curl \
+    gnupg \
+    apt-transport-https \
+    postgresql-client \
+    && curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
+    && curl https://packages.microsoft.com/config/debian/11/prod.list > /etc/apt/sources.list.d/mssql-release.list \
+    && apt-get update \
+    && ACCEPT_EULA=Y apt-get install -y msodbcsql18 mssql-tools18 \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Add SQL tools to PATH
+ENV PATH="$PATH:/opt/mssql-tools18/bin"
+
+# Copy pre-built application
+# You need to build first: dotnet publish -c Release -o ./publish
+COPY ./publish .
+
+# Create non-root user (commented out for now due to permission issues)
+# RUN groupadd -r obfuscator && useradd -r -g obfuscator obfuscator
+# USER obfuscator
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+# Expose port
+EXPOSE 8080
+
+# Set environment variables
+ENV ASPNETCORE_URLS=http://+:8080
+ENV DOTNET_RUNNING_IN_CONTAINER=true
+ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
+
+# Entry point - use dotnet to run the DLL
+ENTRYPOINT ["dotnet", "ObfuscationAgent.dll"]

@@ -1,0 +1,1313 @@
+@model List<Contracts.Models.ObfuscationAgent>
+@{
+    ViewData["Title"] = "Distributed Agents";
+}
+
+<div class="container-fluid">
+    <!-- KPI Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card border-primary">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted mb-1">Total Agents</h6>
+                            <h3 class="mb-0">@ViewBag.TotalAgents</h3>
+                        </div>
+                        <i class="bi bi-hdd-stack fs-1 text-primary"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-success">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted mb-1">Online</h6>
+                            <h3 class="mb-0 text-success">@ViewBag.OnlineAgents</h3>
+                        </div>
+                        <i class="bi bi-check-circle fs-1 text-success"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-warning">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted mb-1">Busy</h6>
+                            <h3 class="mb-0 text-warning">@ViewBag.BusyAgents</h3>
+                        </div>
+                        <i class="bi bi-activity fs-1 text-warning"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-danger">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted mb-1">Offline</h6>
+                            <h3 class="mb-0 text-danger">@ViewBag.OfflineAgents</h3>
+                        </div>
+                        <i class="bi bi-x-circle fs-1 text-danger"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Page Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Distributed Obfuscation Agents</h2>
+        <div>
+            <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#preRegisterModal">
+                <i class="bi bi-plus-circle"></i> Pre-Register Agent
+            </button>
+            <a href="@Url.Action("ProductAssignments", "Agents")" class="btn btn-warning">
+                <i class="bi bi-diagram-3"></i> Product Assignments
+            </a>
+            <a href="@Url.Action("Health", "Agents")" class="btn btn-outline-info">
+                <i class="bi bi-heart-pulse"></i> Health Status
+            </a>
+            <button class="btn btn-primary" onclick="refreshAgents()">
+                <i class="bi bi-arrow-clockwise"></i> Refresh
+            </button>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(ViewBag.ErrorMessage))
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            @ViewBag.ErrorMessage
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    }
+
+    <!-- Agents Table -->
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Status</th>
+                            <th>Name</th>
+                            <th>Host</th>
+                            <th>Location</th>
+                            <th>Environment</th>
+                            <th>Jobs</th>
+                            <th>CPU</th>
+                            <th>Memory</th>
+                            <th>Last Heartbeat</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var agent in Model)
+                        {
+                            <tr>
+                                <td>
+                                    @switch (agent.Status)
+                                    {
+                                        case Contracts.Models.AgentStatus.Online:
+                                            <span class="badge bg-success">Online</span>
+                                            break;
+                                        case Contracts.Models.AgentStatus.Busy:
+                                            <span class="badge bg-warning">Busy</span>
+                                            break;
+                                        case Contracts.Models.AgentStatus.Offline:
+                                            <span class="badge bg-danger">Offline</span>
+                                            break;
+                                        case Contracts.Models.AgentStatus.Error:
+                                            <span class="badge bg-danger">Error</span>
+                                            break;
+                                        case Contracts.Models.AgentStatus.Maintenance:
+                                            <span class="badge bg-secondary">Maintenance</span>
+                                            break;
+                                        default:
+                                            <span class="badge bg-secondary">Unknown</span>
+                                            break;
+                                    }
+                                </td>
+                                <td>
+                                    <strong>@agent.Name</strong><br>
+                                    <small class="text-muted">v@agent.Version</small>
+                                </td>
+                                <td>
+                                    @agent.HostName<br>
+                                    <small class="text-muted">@agent.IpAddress</small>
+                                </td>
+                                <td>@agent.Location</td>
+                                <td>@agent.Environment</td>
+                                <td>
+                                    <div class="small">
+                                        <span class="text-primary">Active: @agent.ActiveJobs</span><br>
+                                        <span class="text-success">Done: @agent.CompletedJobs</span><br>
+                                        <span class="text-danger">Failed: @agent.FailedJobs</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    @if (agent.CurrentCpuUsage > 0)
+                                    {
+                                        <div class="progress" style="height: 20px;">
+                                            <div class="progress-bar @(agent.CurrentCpuUsage > 80 ? "bg-danger" : agent.CurrentCpuUsage > 50 ? "bg-warning" : "bg-success")" 
+                                                 style="width: @agent.CurrentCpuUsage%">
+                                                @agent.CurrentCpuUsage.ToString("F1")%
+                                            </div>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">N/A</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (agent.CurrentMemoryUsage > 0)
+                                    {
+                                        <div class="progress" style="height: 20px;">
+                                            <div class="progress-bar @(agent.CurrentMemoryUsage > 80 ? "bg-danger" : agent.CurrentMemoryUsage > 50 ? "bg-warning" : "bg-info")" 
+                                                 style="width: @agent.CurrentMemoryUsage%">
+                                                @agent.CurrentMemoryUsage.ToString("F1")%
+                                            </div>
+                                        </div>
+                                        <small>@agent.MemoryMB MB</small>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">N/A</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (agent.LastHeartbeat != default(DateTime))
+                                    {
+                                        var timeSince = DateTime.UtcNow - agent.LastHeartbeat;
+                                        if (timeSince.TotalMinutes < 1)
+                                        {
+                                            <span class="text-success">Just now</span>
+                                        }
+                                        else if (timeSince.TotalMinutes < 60)
+                                        {
+                                            <span class="text-warning">@((int)timeSince.TotalMinutes) min ago</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-danger">@((int)timeSince.TotalHours) hours ago</span>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">Never</span>
+                                    }
+                                </td>
+                                <td>
+                                    <a href="@Url.Action("Details", new { id = agent.Id })" class="btn btn-sm btn-outline-primary" title="View Details">
+                                        <i class="bi bi-eye"></i>
+                                    </a>
+                                    <button class="btn btn-sm btn-outline-info" onclick="showDeploymentCommands('@agent.Id', '@agent.Name', '@agent.ApiKey')" title="Deployment Commands">
+                                        <i class="bi bi-terminal"></i>
+                                    </button>
+                                    @if (agent.Status == Contracts.Models.AgentStatus.Offline)
+                                    {
+                                        <button class="btn btn-sm btn-outline-success" onclick="updateStatus('@agent.Id', 'Online')" title="Start Agent">
+                                            <i class="bi bi-play"></i>
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn btn-sm btn-outline-warning" onclick="updateStatus('@agent.Id', 'Maintenance')" title="Pause Agent">
+                                            <i class="bi bi-pause"></i>
+                                        </button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                        @if (Model.Count == 0)
+                        {
+                            <tr>
+                                <td colspan="10" class="text-center text-muted py-4">
+                                    <i class="bi bi-inbox fs-1"></i><br>
+                                    No agents registered yet
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Pre-Register Agent Modal -->
+<div class="modal fade" id="preRegisterModal" tabindex="-1" aria-labelledby="preRegisterModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="preRegisterModalLabel">Pre-Register Agent for Deployment</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="preRegisterForm">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="agentName" class="form-label">Agent Name <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="agentName" name="name" required>
+                                <small class="text-muted">Unique identifier for this agent</small>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="hostName" class="form-label">Hostname <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="hostName" name="hostName" required>
+                                <small class="text-muted">Hostname or container name</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="location" class="form-label">Location <span class="text-danger">*</span></label>
+                                <select class="form-select" id="location" name="location" required>
+                                    <option value="">Select Location</option>
+                                    <option value="OnPremises">On-Premises</option>
+                                    <option value="Docker">Docker</option>
+                                    <option value="Kubernetes">Kubernetes</option>
+                                    <option value="Azure-EastUS">Azure - East US</option>
+                                    <option value="Azure-WestUS">Azure - West US</option>
+                                    <option value="Azure-EastUS2">Azure - East US 2</option>
+                                    <option value="Azure-CentralUS">Azure - Central US</option>
+                                    <option value="AWS-US-East-1">AWS - US East 1</option>
+                                    <option value="AWS-US-West-2">AWS - US West 2</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="environment" class="form-label">Environment</label>
+                                <select class="form-select" id="environment" name="environment">
+                                    <option value="Production">Production</option>
+                                    <option value="Development">Development</option>
+                                    <option value="Staging">Staging</option>
+                                    <option value="Test">Test</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="cpuCores" class="form-label">CPU Cores</label>
+                                <input type="number" class="form-control" id="cpuCores" name="cpuCores" value="2" min="1" max="16">
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="memoryMB" class="form-label">Memory (MB)</label>
+                                <input type="number" class="form-control" id="memoryMB" name="memoryMB" value="2048" min="512" max="32768">
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="maxConcurrentJobs" class="form-label">Max Concurrent Jobs</label>
+                                <input type="number" class="form-control" id="maxConcurrentJobs" name="maxConcurrentJobs" value="2" min="1" max="10">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Capabilities</label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="canProcessSqlServer" checked>
+                            <label class="form-check-label" for="canProcessSqlServer">
+                                SQL Server
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="canProcessMySQL">
+                            <label class="form-check-label" for="canProcessMySQL">
+                                MySQL
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="canProcessPostgreSQL">
+                            <label class="form-check-label" for="canProcessPostgreSQL">
+                                PostgreSQL
+                            </label>
+                        </div>
+                    </div>
+                </form>
+                
+                <div id="registrationResult" style="display: none;">
+                    <hr>
+                    <div class="alert alert-success">
+                        <h6>Agent Pre-Registered Successfully!</h6>
+                        <p>Use the following information to deploy your agent:</p>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label class="form-label">Agent ID:</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="resultAgentId" readonly>
+                                <button class="btn btn-outline-secondary" type="button" onclick="copyToClipboard('resultAgentId')">
+                                    <i class="bi bi-clipboard"></i> Copy
+                                </button>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">API Key:</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="resultApiKey" readonly>
+                                <button class="btn btn-outline-secondary" type="button" onclick="copyToClipboard('resultApiKey')">
+                                    <i class="bi bi-clipboard"></i> Copy
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-3">
+                        <label class="form-label">Deployment Options:</label>
+                        <ul class="nav nav-tabs" id="deploymentTabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="docker-tab" data-bs-toggle="tab" data-bs-target="#docker" type="button">Docker</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="kubernetes-tab" data-bs-toggle="tab" data-bs-target="#kubernetes" type="button">Kubernetes</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="azure-tab" data-bs-toggle="tab" data-bs-target="#azure" type="button">Azure App Service</button>
+                            </li>
+                        </ul>
+                        <div class="tab-content mt-2" id="deploymentTabsContent">
+                            <div class="tab-pane fade show active" id="docker" role="tabpanel">
+                                <pre class="bg-dark text-light p-2"><code id="dockerCommand"></code></pre>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="copyCommand('dockerCommand')">
+                                    <i class="bi bi-clipboard"></i> Copy Command
+                                </button>
+                            </div>
+                            <div class="tab-pane fade" id="kubernetes" role="tabpanel">
+                                <pre class="bg-dark text-light p-2"><code id="kubernetesYaml"></code></pre>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="copyCommand('kubernetesYaml')">
+                                    <i class="bi bi-clipboard"></i> Copy YAML
+                                </button>
+                            </div>
+                            <div class="tab-pane fade" id="azure" role="tabpanel">
+                                <pre class="bg-dark text-light p-2"><code id="azureCommand"></code></pre>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="copyCommand('azureCommand')">
+                                    <i class="bi bi-clipboard"></i> Copy Commands
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" id="preRegisterBtn" onclick="preRegisterAgent()">
+                    <i class="bi bi-plus-circle"></i> Pre-Register Agent
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Deployment Commands Modal for Existing Agents -->
+<div class="modal fade" id="deploymentCommandsModal" tabindex="-1" aria-labelledby="deploymentCommandsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deploymentCommandsModalLabel">
+                    <i class="bi bi-terminal"></i> Deployment Commands - <span id="deploymentAgentName"></span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i> Use these commands to deploy the agent in different environments.
+                    The Agent ID is already configured in the commands below.
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Agent ID:</label>
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="deployAgentId" readonly>
+                            <button class="btn btn-outline-secondary" type="button" onclick="copyToClipboard('deployAgentId')">
+                                <i class="bi bi-clipboard"></i> Copy
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Portal URL:</label>
+                        <input type="text" class="form-control" value="http://localhost:7001" readonly>
+                    </div>
+                </div>
+                
+                <div class="mt-3">
+                    <ul class="nav nav-tabs" id="deployTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="deploy-docker-tab" data-bs-toggle="tab" data-bs-target="#deploy-docker" type="button">
+                                <i class="bi bi-box"></i> Docker
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="deploy-k8s-tab" data-bs-toggle="tab" data-bs-target="#deploy-k8s" type="button">
+                                <i class="bi bi-grid-3x3"></i> Kubernetes
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="deploy-azure-tab" data-bs-toggle="tab" data-bs-target="#deploy-azure" type="button">
+                                <i class="bi bi-cloud"></i> Azure
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="deploy-compose-tab" data-bs-toggle="tab" data-bs-target="#deploy-compose" type="button">
+                                <i class="bi bi-layers"></i> Docker Compose
+                            </button>
+                        </li>
+                    </ul>
+                    
+                    <div class="tab-content mt-3" id="deployTabsContent">
+                        <div class="tab-pane fade show active" id="deploy-docker" role="tabpanel">
+                            <h6>Docker Run Command:</h6>
+                            <pre class="bg-dark text-light p-3 rounded"><code id="deployDockerCommand"></code></pre>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="copyCommand('deployDockerCommand')">
+                                <i class="bi bi-clipboard"></i> Copy Command
+                            </button>
+                        </div>
+                        
+                        <div class="tab-pane fade" id="deploy-k8s" role="tabpanel">
+                            <h6>Kubernetes Deployment YAML:</h6>
+                            <pre class="bg-dark text-light p-3 rounded" style="max-height: 400px; overflow-y: auto;"><code id="deployK8sYaml"></code></pre>
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-sm btn-outline-secondary" onclick="copyCommand('deployK8sYaml')">
+                                    <i class="bi bi-clipboard"></i> Copy YAML
+                                </button>
+                                <button class="btn btn-sm btn-outline-primary" onclick="downloadYaml('deployK8sYaml', 'agent-deployment.yaml')">
+                                    <i class="bi bi-download"></i> Download YAML
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="tab-pane fade" id="deploy-azure" role="tabpanel">
+                            <h6>Azure Container Instance Commands:</h6>
+                            <pre class="bg-dark text-light p-3 rounded"><code id="deployAzureCommand"></code></pre>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="copyCommand('deployAzureCommand')">
+                                <i class="bi bi-clipboard"></i> Copy Commands
+                            </button>
+                            <div class="mt-3">
+                                <h6>Azure App Service (Web App for Containers):</h6>
+                                <pre class="bg-dark text-light p-3 rounded"><code id="deployAzureAppService"></code></pre>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="copyCommand('deployAzureAppService')">
+                                    <i class="bi bi-clipboard"></i> Copy Commands
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="tab-pane fade" id="deploy-compose" role="tabpanel">
+                            <h6>Docker Compose YAML:</h6>
+                            <pre class="bg-dark text-light p-3 rounded" style="max-height: 400px; overflow-y: auto;"><code id="deployComposeYaml"></code></pre>
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-sm btn-outline-secondary" onclick="copyCommand('deployComposeYaml')">
+                                    <i class="bi bi-clipboard"></i> Copy YAML
+                                </button>
+                                <button class="btn btn-sm btn-outline-primary" onclick="downloadYaml('deployComposeYaml', 'docker-compose.yaml')">
+                                    <i class="bi bi-download"></i> Download YAML
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="deploymentWarning" class="alert alert-warning mt-3 mb-0">
+                    <i class="bi bi-exclamation-triangle"></i> <strong>Important:</strong> 
+                    <ul class="mb-0" id="deploymentWarningList">
+                        <li>Update <code>/path/to/portal</code> to your actual portal directory path</li>
+                        <li>Ensure the Docker image is built from the portal directory (NOT agent-client) so it can access the contracts folder</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://unpkg.com/@@microsoft/signalr@latest/dist/browser/signalr.js"></script>
+    <script>
+        let connection;
+        
+        function refreshAgents() {
+            location.reload();
+        }
+
+        function updateStatus(agentId, status) {
+            if (confirm('Are you sure you want to change the agent status?')) {
+                fetch('@Url.Action("UpdateStatus", "Agents")', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: `id=${agentId}&status=${status}`
+                }).then(() => {
+                    location.reload();
+                });
+            }
+        }
+
+        function initializeSignalR() {
+            connection = new signalR.HubConnectionBuilder()
+                .withUrl("http://localhost:7001/hubs/monitoring")
+                .build();
+
+            connection.start().then(function () {
+                console.log("SignalR Connected");
+                
+                // Join monitoring groups
+                connection.invoke("JoinAgentMonitoring");
+                connection.invoke("JoinJobMonitoring");
+                
+            }).catch(function (err) {
+                console.error("SignalR Connection Error: ", err.toString());
+                // Fallback to auto-refresh if SignalR fails
+                setInterval(refreshAgents, 30000);
+            });
+
+            // Handle agent status updates
+            connection.on("AgentStatusUpdate", function (agentData) {
+                console.log("Agent update received: ", agentData);
+                updateAgentInUI(agentData);
+            });
+
+            // Handle system metrics updates
+            connection.on("SystemMetricsUpdate", function (metrics) {
+                console.log("System metrics update: ", metrics);
+                updateSystemMetrics(metrics);
+            });
+
+            // Handle job status updates
+            connection.on("JobStatusUpdate", function (jobData) {
+                console.log("Job update received: ", jobData);
+                // Update job counters in agent cards
+                updateJobCountsInAgentUI(jobData);
+            });
+
+            // Handle system alerts
+            connection.on("SystemAlert", function (alert) {
+                console.log("System alert: ", alert);
+                showAlert(alert);
+            });
+        }
+
+        function updateAgentInUI(agentData) {
+            // Find the agent row in the table
+            const rows = document.querySelectorAll('tbody tr');
+            rows.forEach(row => {
+                const cells = row.getElementsByTagName('td');
+                if (cells.length > 1) {
+                    const nameCell = cells[1];
+                    const strongElement = nameCell.querySelector('strong');
+                    if (strongElement && strongElement.textContent === agentData.Name) {
+                        // Update status badge
+                        const statusCell = cells[0];
+                        statusCell.innerHTML = getStatusBadgeHTML(agentData.Status);
+                        
+                        // Update CPU usage
+                        const cpuCell = cells[6];
+                        if (agentData.CpuUsage !== null) {
+                            cpuCell.innerHTML = getCpuProgressBarHTML(agentData.CpuUsage);
+                        }
+                        
+                        // Update Memory usage
+                        const memoryCell = cells[7];
+                        if (agentData.MemoryUsage !== null) {
+                            memoryCell.innerHTML = getMemoryProgressBarHTML(agentData.MemoryUsage);
+                        }
+                        
+                        // Update job counts
+                        const jobsCell = cells[5];
+                        jobsCell.innerHTML = `
+                            <div class="small">
+                                <span class="text-primary">Active: ${agentData.ActiveJobs}</span><br>
+                                <span class="text-success">Done: ${agentData.CompletedJobs}</span><br>
+                                <span class="text-danger">Failed: ${agentData.FailedJobs}</span>
+                            </div>
+                        `;
+                        
+                        // Update last heartbeat
+                        const heartbeatCell = cells[8];
+                        heartbeatCell.innerHTML = '<span class="text-success">Just now</span>';
+                    }
+                }
+            });
+        }
+
+        function updateSystemMetrics(metrics) {
+            // Update KPI cards
+            const totalAgentsCard = document.querySelector('.card.border-primary .mb-0');
+            if (totalAgentsCard) totalAgentsCard.textContent = metrics.TotalAgents;
+            
+            const onlineAgentsCard = document.querySelector('.card.border-success .mb-0');
+            if (onlineAgentsCard) onlineAgentsCard.textContent = metrics.OnlineAgents;
+            
+            const busyAgentsCard = document.querySelector('.card.border-warning .mb-0');
+            if (busyAgentsCard) busyAgentsCard.textContent = metrics.BusyAgents;
+            
+            const offlineAgentsCard = document.querySelector('.card.border-danger .mb-0');
+            if (offlineAgentsCard) offlineAgentsCard.textContent = metrics.OfflineAgents;
+        }
+
+        function getStatusBadgeHTML(status) {
+            switch (status) {
+                case 'Online':
+                    return '<span class="badge bg-success">Online</span>';
+                case 'Busy':
+                    return '<span class="badge bg-warning">Busy</span>';
+                case 'Offline':
+                    return '<span class="badge bg-danger">Offline</span>';
+                case 'Error':
+                    return '<span class="badge bg-danger">Error</span>';
+                case 'Maintenance':
+                    return '<span class="badge bg-secondary">Maintenance</span>';
+                default:
+                    return '<span class="badge bg-secondary">Unknown</span>';
+            }
+        }
+
+        function getCpuProgressBarHTML(cpuUsage) {
+            const colorClass = cpuUsage > 80 ? 'bg-danger' : cpuUsage > 50 ? 'bg-warning' : 'bg-success';
+            return `
+                <div class="progress" style="height: 20px;">
+                    <div class="progress-bar ${colorClass}" style="width: ${cpuUsage}%">
+                        ${cpuUsage.toFixed(1)}%
+                    </div>
+                </div>
+            `;
+        }
+
+        function getMemoryProgressBarHTML(memoryUsage) {
+            const colorClass = memoryUsage > 80 ? 'bg-danger' : memoryUsage > 50 ? 'bg-warning' : 'bg-info';
+            return `
+                <div class="progress" style="height: 20px;">
+                    <div class="progress-bar ${colorClass}" style="width: ${memoryUsage}%">
+                        ${memoryUsage.toFixed(1)}%
+                    </div>
+                </div>
+            `;
+        }
+
+        function updateJobCountsInAgentUI(jobData) {
+            // This would update job progress bars and counts when jobs change status
+            // For now, just log the update
+            console.log("Job status updated:", jobData);
+        }
+
+        function showAlert(alert) {
+            // Create a toast notification for alerts
+            const alertHTML = `
+                <div class="alert alert-${alert.Severity.toLowerCase() === 'error' ? 'danger' : 
+                             alert.Severity.toLowerCase() === 'warning' ? 'warning' : 'info'} alert-dismissible fade show" 
+                     style="position: fixed; top: 80px; right: 20px; z-index: 1050; min-width: 300px;">
+                    <strong>${alert.Type} Alert:</strong> ${alert.Message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            `;
+            document.body.insertAdjacentHTML('beforeend', alertHTML);
+            
+            // Auto-dismiss after 5 seconds
+            setTimeout(() => {
+                const alertElements = document.querySelectorAll('.alert[style*="position: fixed"]');
+                alertElements.forEach(el => {
+                    if (el.querySelector('.btn-close')) {
+                        el.remove();
+                    }
+                });
+            }, 5000);
+        }
+
+        // Initialize SignalR when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeSignalR();
+        });
+
+        // Pre-registration functions
+        function preRegisterAgent() {
+            console.log('=== Pre-Register Agent button clicked ===');
+            
+            const form = document.getElementById('preRegisterForm');
+            console.log('Form element:', form);
+            
+            if (!form.checkValidity()) {
+                console.log('Form validation failed');
+                form.reportValidity();
+                return;
+            }
+            
+            console.log('Form validation passed, preparing data...');
+
+            const data = {
+                name: document.getElementById('agentName').value,
+                hostName: document.getElementById('hostName').value,
+                location: document.getElementById('location').value,
+                environment: document.getElementById('environment').value,
+                cpuCores: parseInt(document.getElementById('cpuCores').value),
+                memoryMB: parseInt(document.getElementById('memoryMB').value),
+                maxConcurrentJobs: parseInt(document.getElementById('maxConcurrentJobs').value),
+                port: 8080,
+                version: "1.0.0",
+                capabilities: {
+                    canProcessSqlServer: document.getElementById('canProcessSqlServer').checked,
+                    canProcessMySQL: document.getElementById('canProcessMySQL').checked,
+                    canProcessPostgreSQL: document.getElementById('canProcessPostgreSQL').checked,
+                    canProcessOracle: false,
+                    maxDatabaseSizeGB: 100,
+                    maxRowsPerBatch: 10000
+                }
+            };
+            
+            console.log('Request data prepared:', JSON.stringify(data, null, 2));
+
+            // Disable button and show loading
+            const btn = document.getElementById('preRegisterBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Registering...';
+            console.log('Button disabled, showing loading state');
+            
+            const apiUrl = 'http://localhost:7001/api/agent/pre-register';
+            const headers = {
+                'Content-Type': 'application/json',
+                'X-API-Key': 'portal-admin-key-2024'
+            };
+            
+            console.log('Making API request to:', apiUrl);
+            console.log('Request headers:', headers);
+            console.log('Request body:', JSON.stringify(data));
+
+            fetch(apiUrl, {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify(data)
+            })
+            .then(response => {
+                console.log('Response received:', response);
+                console.log('Response status:', response.status);
+                console.log('Response statusText:', response.statusText);
+                console.log('Response ok:', response.ok);
+                
+                if (!response.ok) {
+                    console.error('Response not OK. Status:', response.status);
+                    // Try to get error text
+                    return response.text().then(text => {
+                        console.error('Response text:', text);
+                        throw new Error(`HTTP ${response.status}: ${text || response.statusText}`);
+                    });
+                }
+                
+                return response.json();
+            })
+            .then(result => {
+                console.log('Parsed JSON result:', result);
+                
+                if (result.success) {
+                    console.log('Registration successful');
+                    console.log('Agent ID:', result.agentId);
+                    console.log('API Key:', result.apiKey);
+                    
+                    // Show registration results
+                    document.getElementById('resultAgentId').value = result.agentId;
+                    document.getElementById('resultApiKey').value = result.apiKey;
+                    
+                    // Generate deployment commands with API key
+                    generateDeploymentCommands(result.agentId, data.name, result.apiKey);
+                    
+                    // Show result section
+                    document.getElementById('registrationResult').style.display = 'block';
+                    
+                    // Hide form
+                    form.style.display = 'none';
+                    btn.style.display = 'none';
+                } else {
+                    console.error('Registration failed with success=false:', result);
+                    alert('Registration failed: ' + (result.errorMessage || 'Unknown error'));
+                }
+            })
+            .catch(error => {
+                console.error('=== Fetch error caught ===');
+                console.error('Error type:', error.constructor.name);
+                console.error('Error message:', error.message);
+                console.error('Error stack:', error.stack);
+                console.error('Full error object:', error);
+                alert('Failed to pre-register agent: ' + error.message);
+            })
+            .finally(() => {
+                console.log('Finally block - resetting button state');
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-plus-circle"></i> Pre-Register Agent';
+            });
+        }
+
+        function showDeploymentCommands(agentId, agentName, apiKey) {
+            // Set agent details
+            document.getElementById('deploymentAgentName').textContent = agentName;
+            document.getElementById('deployAgentId').value = agentId;
+            
+            const portalUrl = 'http://localhost:7001';
+            
+            // Use the actual API key if provided, otherwise show placeholder
+            const actualApiKey = apiKey && apiKey !== 'null' ? apiKey : 'YOUR_API_KEY_HERE';
+            
+            // Docker command with build instructions and actual API key
+            const dockerCmd = `# First, build the Docker image from the portal directory:
+# cd /path/to/portal
+# docker build -t obfuscation-agent:latest -f agent-client/Dockerfile .
+
+# Then run the container:
+docker run -d \\
+  --name ${agentName} \\
+  --restart unless-stopped \\
+  -e "OBFUSCATION_Agent__AgentId=${agentId}" \\
+  -e "OBFUSCATION_Agent__ApiKey=${actualApiKey}" \\
+  -e "OBFUSCATION_Agent__Name=${agentName}" \\
+  -e "OBFUSCATION_Portal__BaseUrl=${portalUrl}" \\
+  -e "OBFUSCATION_Portal__HeartbeatInterval=30" \\
+  -e "OBFUSCATION_Portal__MaxRetryAttempts=3" \\
+  -p 8080:8080 \\
+  obfuscation-agent:latest`;
+            document.getElementById('deployDockerCommand').textContent = dockerCmd;
+            
+            // Kubernetes YAML with build instructions
+            const k8sYaml = `# First, build and push the Docker image:
+# cd /path/to/portal
+# docker build -t obfuscation-agent:latest -f agent-client/Dockerfile .
+# docker tag obfuscation-agent:latest your-registry/obfuscation-agent:latest
+# docker push your-registry/obfuscation-agent:latest
+
+# Then apply this YAML:
+# kubectl apply -f agent-deployment.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${agentName}-deployment
+  namespace: obfuscation-agents
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: obfuscation-agent
+      agent: ${agentName}
+  template:
+    metadata:
+      labels:
+        app: obfuscation-agent
+        agent: ${agentName}
+    spec:
+      containers:
+      - name: agent
+        image: your-registry/obfuscation-agent:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+        env:
+        - name: OBFUSCATION_Agent__AgentId
+          value: "${agentId}"
+        - name: OBFUSCATION_Agent__ApiKey
+          valueFrom:
+            secretKeyRef:
+              name: ${agentName}-secret
+              key: api-key
+        - name: OBFUSCATION_Agent__Name
+          value: "${agentName}"
+        - name: OBFUSCATION_Portal__BaseUrl
+          value: "${portalUrl}"
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "500m"
+          limits:
+            memory: "8Gi"
+            cpu: "2000m"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ${agentName}-secret
+  namespace: obfuscation-agents
+type: Opaque
+stringData:
+  api-key: ${actualApiKey}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${agentName}-service
+  namespace: obfuscation-agents
+spec:
+  selector:
+    app: obfuscation-agent
+    agent: ${agentName}
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080`;
+            document.getElementById('deployK8sYaml').textContent = k8sYaml;
+            
+            // Azure Container Instance
+            const azureCmd = `# Create Azure Container Instance
+az container create \\
+  --resource-group obfuscation-rg \\
+  --name ${agentName} \\
+  --image obfuscation-agent:latest \\
+  --cpu 2 --memory 8 \\
+  --ports 8080 \\
+  --environment-variables \\
+    OBFUSCATION_Agent__AgentId=${agentId} \\
+    OBFUSCATION_Agent__Name=${agentName} \\
+    OBFUSCATION_Portal__BaseUrl=${portalUrl} \\
+  --secure-environment-variables \\
+    OBFUSCATION_Agent__ApiKey=${actualApiKey} \\
+  --restart-policy Always \\
+  --location eastus`;
+            document.getElementById('deployAzureCommand').textContent = azureCmd;
+            
+            // Azure App Service
+            const azureAppService = `# Create Azure App Service (Web App for Containers)
+# Step 1: Create App Service Plan (if not exists)
+az appservice plan create \\
+  --name obfuscation-plan \\
+  --resource-group obfuscation-rg \\
+  --sku B2 --is-linux
+
+# Step 2: Create Web App
+az webapp create \\
+  --name ${agentName} \\
+  --resource-group obfuscation-rg \\
+  --plan obfuscation-plan \\
+  --deployment-container-image-name obfuscation-agent:latest
+
+# Step 3: Configure environment variables
+az webapp config appsettings set \\
+  --name ${agentName} \\
+  --resource-group obfuscation-rg \\
+  --settings \\
+    OBFUSCATION_Agent__AgentId=${agentId} \\
+    OBFUSCATION_Agent__ApiKey=${actualApiKey} \\
+    OBFUSCATION_Agent__Name=${agentName} \\
+    OBFUSCATION_Portal__BaseUrl=${portalUrl} \\
+    WEBSITES_PORT=8080`;
+            document.getElementById('deployAzureAppService').textContent = azureAppService;
+            
+            // Docker Compose
+            const composeYaml = `version: '3.8'
+
+services:
+  ${agentName}:
+    image: obfuscation-agent:latest
+    container_name: ${agentName}
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - OBFUSCATION_Agent__AgentId=${agentId}
+      - OBFUSCATION_Agent__ApiKey=${actualApiKey}
+      - OBFUSCATION_Agent__Name=${agentName}
+      - OBFUSCATION_Portal__BaseUrl=${portalUrl}
+      - OBFUSCATION_Portal__HeartbeatInterval=30
+      - OBFUSCATION_Portal__MaxRetryAttempts=3
+    networks:
+      - obfuscation-network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 8G
+        reservations:
+          cpus: '0.5'
+          memory: 2G
+
+networks:
+  obfuscation-network:
+    driver: bridge
+    name: obfuscation-network`;
+            document.getElementById('deployComposeYaml').textContent = composeYaml;
+            
+            // Update warning message based on API key availability
+            const warningList = document.getElementById('deploymentWarningList');
+            warningList.innerHTML = ''; // Clear existing items
+            
+            if (actualApiKey === 'YOUR_API_KEY_HERE') {
+                // No API key available - show placeholder warning
+                warningList.innerHTML += '<li>Replace <code>YOUR_API_KEY_HERE</code> with the actual API key</li>';
+                warningList.innerHTML += '<li>API keys are generated during agent pre-registration</li>';
+                warningList.innerHTML += '<li>For existing agents without API keys, use Pre-Register Agent to create a new agent with an API key</li>';
+            } else {
+                // API key is available
+                warningList.innerHTML += '<li>API key has been included in the deployment commands</li>';
+            }
+            
+            // Always show these warnings
+            warningList.innerHTML += '<li>Update <code>/path/to/portal</code> to your actual portal directory path</li>';
+            warningList.innerHTML += '<li>Build the Docker image from the portal directory (not agent-client) so it can access the contracts folder</li>';
+            warningList.innerHTML += '<li>The build command should be: <code>docker build -t obfuscation-agent:latest -f agent-client/Dockerfile .</code></li>';
+            
+            // Show the modal
+            const modal = new bootstrap.Modal(document.getElementById('deploymentCommandsModal'));
+            modal.show();
+        }
+        
+        function downloadYaml(elementId, filename) {
+            const content = document.getElementById(elementId).textContent;
+            const blob = new Blob([content], { type: 'text/yaml' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        }
+
+        function generateDeploymentCommands(agentId, agentName, apiKey) {
+            const portalUrl = 'http://localhost:7001';
+            
+            // Docker command with build instructions
+            const dockerCmd = `# First, build the Docker image from the portal directory:
+# cd /path/to/portal
+# docker build -t obfuscation-agent:latest -f agent-client/Dockerfile .
+
+# Then run the container:
+docker run -d \\
+  --name ${agentName} \\
+  --restart unless-stopped \\
+  -e "OBFUSCATION_Agent__AgentId=${agentId}" \\
+  -e "OBFUSCATION_Agent__ApiKey=${apiKey || 'YOUR_API_KEY_HERE'}" \\
+  -e "OBFUSCATION_Agent__Name=${agentName}" \\
+  -e "OBFUSCATION_Portal__BaseUrl=${portalUrl}" \\
+  -e "OBFUSCATION_Portal__HeartbeatInterval=30" \\
+  -e "OBFUSCATION_Portal__MaxRetryAttempts=3" \\
+  -p 8080:8080 \\
+  obfuscation-agent:latest`;
+            document.getElementById('dockerCommand').textContent = dockerCmd;
+            
+            // Kubernetes YAML with build instructions and API key
+            const k8sYaml = `# First, build and push the Docker image:
+# cd /path/to/portal
+# docker build -t obfuscation-agent:latest -f agent-client/Dockerfile .
+# docker tag obfuscation-agent:latest your-registry/obfuscation-agent:latest
+# docker push your-registry/obfuscation-agent:latest
+
+# Then apply this YAML:
+# kubectl apply -f agent-deployment.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${agentName}-deployment
+  namespace: obfuscation-agents
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: obfuscation-agent
+      agent: ${agentName}
+  template:
+    metadata:
+      labels:
+        app: obfuscation-agent
+        agent: ${agentName}
+    spec:
+      containers:
+      - name: agent
+        image: your-registry/obfuscation-agent:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+        env:
+        - name: OBFUSCATION_Agent__AgentId
+          value: "${agentId}"
+        - name: OBFUSCATION_Agent__ApiKey
+          value: "${apiKey || 'YOUR_API_KEY_HERE'}"
+        - name: OBFUSCATION_Agent__Name
+          value: "${agentName}"
+        - name: OBFUSCATION_Portal__BaseUrl
+          value: "${portalUrl}"
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "500m"
+          limits:
+            memory: "8Gi"
+            cpu: "2000m"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ${agentName}-secret
+  namespace: obfuscation-agents
+type: Opaque
+stringData:
+  api-key: ${apiKey || 'YOUR_API_KEY_HERE'}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${agentName}-service
+  namespace: obfuscation-agents
+spec:
+  selector:
+    app: obfuscation-agent
+    agent: ${agentName}
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080`;
+            document.getElementById('kubernetesYaml').textContent = k8sYaml;
+            
+            // Azure commands with build instructions and API key
+            const azureCmd = `# First, build and push to Azure Container Registry:
+# cd /path/to/portal
+# az acr build --registry myregistry --image obfuscation-agent:latest -f agent-client/Dockerfile .
+
+# Then create Azure Container Instance:
+az container create \\
+  --resource-group obfuscation-rg \\
+  --name ${agentName} \\
+  --image myregistry.azurecr.io/obfuscation-agent:latest \\
+  --cpu 2 --memory 8 \\
+  --ports 8080 \\
+  --environment-variables \\
+    OBFUSCATION_Agent__AgentId=${agentId} \\
+    OBFUSCATION_Agent__Name=${agentName} \\
+    OBFUSCATION_Portal__BaseUrl=${portalUrl} \\
+  --secure-environment-variables \\
+    OBFUSCATION_Agent__ApiKey=${apiKey || 'YOUR_API_KEY_HERE'} \\
+  --restart-policy Always \\
+  --location eastus`;
+            document.getElementById('azureCommand').textContent = azureCmd;
+            
+            // Azure App Service commands with API key
+            const azureAppService = `# Create Azure App Service (Web App for Containers)
+# Step 1: Create App Service Plan (if not exists)
+az appservice plan create \\
+  --name obfuscation-plan \\
+  --resource-group obfuscation-rg \\
+  --sku B2 --is-linux
+
+# Step 2: Create Web App
+az webapp create \\
+  --name ${agentName} \\
+  --resource-group obfuscation-rg \\
+  --plan obfuscation-plan \\
+  --deployment-container-image-name myregistry.azurecr.io/obfuscation-agent:latest
+
+# Step 3: Configure environment variables with API key
+az webapp config appsettings set \\
+  --name ${agentName} \\
+  --resource-group obfuscation-rg \\
+  --settings \\
+    OBFUSCATION_Agent__AgentId=${agentId} \\
+    OBFUSCATION_Agent__ApiKey=${apiKey || 'YOUR_API_KEY_HERE'} \\
+    OBFUSCATION_Agent__Name=${agentName} \\
+    OBFUSCATION_Portal__BaseUrl=${portalUrl} \\
+    WEBSITES_PORT=8080`;
+            // For the pre-registration modal, these are different element IDs
+            if (document.getElementById('azureCommand')) {
+                document.getElementById('azureCommand').textContent = `${azureCmd}\n\n${azureAppService}`;
+            }
+            
+            // Docker Compose with API key
+            const composeYaml = `# Build the image first:
+# cd /path/to/portal/agent-client
+# docker build -t obfuscation-agent:latest -f Dockerfile .
+
+# Then use this docker-compose.yaml:
+version: '3.8'
+
+services:
+  ${agentName}:
+    image: obfuscation-agent:latest
+    container_name: ${agentName}
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - OBFUSCATION_Agent__AgentId=${agentId}
+      - OBFUSCATION_Agent__ApiKey=${apiKey || 'YOUR_API_KEY_HERE'}
+      - OBFUSCATION_Agent__Name=${agentName}
+      - OBFUSCATION_Portal__BaseUrl=${portalUrl}
+      - OBFUSCATION_Portal__HeartbeatInterval=30
+      - OBFUSCATION_Portal__MaxRetryAttempts=3
+    networks:
+      - obfuscation-network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 8G
+        reservations:
+          cpus: '0.5'
+          memory: 2G
+
+networks:
+  obfuscation-network:
+    driver: bridge
+    name: obfuscation-network`;
+            
+            // This function is called during pre-registration, which has different element IDs
+            // than the deployment modal
+            if (apiKey) {
+                console.log('API key included in deployment commands for new registration');
+            }
+        }
+
+        function copyToClipboard(elementId) {
+            const element = document.getElementById(elementId);
+            element.select();
+            document.execCommand('copy');
+            
+            // Show feedback
+            const btn = element.nextElementSibling;
+            const originalHTML = btn.innerHTML;
+            btn.innerHTML = '<i class="bi bi-check"></i> Copied!';
+            setTimeout(() => {
+                btn.innerHTML = originalHTML;
+            }, 2000);
+        }
+
+        function copyCommand(elementId) {
+            const element = document.getElementById(elementId);
+            const text = element.textContent;
+            
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+            
+            // Show feedback
+            const btn = event.target;
+            const originalHTML = btn.innerHTML;
+            btn.innerHTML = '<i class="bi bi-check"></i> Copied!';
+            setTimeout(() => {
+                btn.innerHTML = originalHTML;
+            }, 2000);
+        }
+
+        // Reset modal when closed
+        document.getElementById('preRegisterModal').addEventListener('hidden.bs.modal', function () {
+            document.getElementById('preRegisterForm').style.display = 'block';
+            document.getElementById('preRegisterForm').reset();
+            document.getElementById('registrationResult').style.display = 'none';
+            document.getElementById('preRegisterBtn').style.display = 'block';
+        });
+    </script>
+}

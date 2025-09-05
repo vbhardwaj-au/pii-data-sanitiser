@@ -1,0 +1,535 @@
+@model Guid
+@{
+    ViewData["Title"] = "Pipeline Execution Monitor";
+    var jobId = Model;
+}
+
+<style>
+    .pipeline-monitor {
+        height: calc(100vh - 120px);
+        display: flex;
+        flex-direction: column;
+    }
+
+    .stages-container {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 20px;
+        padding: 15px;
+        background: #f8f9fa;
+        border-radius: 8px;
+    }
+
+    .stage-card {
+        flex: 1;
+        margin: 0 10px;
+        padding: 15px;
+        background: white;
+        border-radius: 8px;
+        border: 2px solid #dee2e6;
+        position: relative;
+        transition: all 0.3s ease;
+    }
+
+    .stage-card.active {
+        border-color: #0d6efd;
+        box-shadow: 0 0 10px rgba(13, 110, 253, 0.25);
+    }
+
+    .stage-card.completed {
+        border-color: #198754;
+        background: #f0fff4;
+    }
+
+    .stage-card.failed {
+        border-color: #dc3545;
+        background: #fff5f5;
+    }
+
+    .stage-card.skipped {
+        opacity: 0.6;
+    }
+
+    .stage-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 10px;
+        font-size: 20px;
+    }
+
+    .stage-card.pending .stage-icon {
+        background: #e9ecef;
+        color: #6c757d;
+    }
+
+    .stage-card.active .stage-icon {
+        background: #0d6efd;
+        color: white;
+        animation: pulse 2s infinite;
+    }
+
+    .stage-card.completed .stage-icon {
+        background: #198754;
+        color: white;
+    }
+
+    .stage-card.failed .stage-icon {
+        background: #dc3545;
+        color: white;
+    }
+
+    @@keyframes pulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.1); }
+        100% { transform: scale(1); }
+    }
+
+    .log-container {
+        flex: 1;
+        background: #1e1e1e;
+        color: #d4d4d4;
+        border-radius: 8px;
+        padding: 15px;
+        overflow-y: auto;
+        font-family: 'Consolas', 'Monaco', monospace;
+        font-size: 13px;
+    }
+
+    .log-entry {
+        padding: 4px 0;
+        border-bottom: 1px solid #333;
+        display: flex;
+        align-items: start;
+    }
+
+    .log-timestamp {
+        color: #858585;
+        margin-right: 15px;
+        min-width: 80px;
+    }
+
+    .log-level {
+        margin-right: 10px;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-weight: bold;
+        min-width: 60px;
+        text-align: center;
+    }
+
+    .log-level.info {
+        background: #0d6efd;
+        color: white;
+    }
+
+    .log-level.warning {
+        background: #ffc107;
+        color: #000;
+    }
+
+    .log-level.error {
+        background: #dc3545;
+        color: white;
+    }
+
+    .log-level.debug {
+        background: #6c757d;
+        color: white;
+    }
+
+    .log-message {
+        flex: 1;
+        color: #d4d4d4;
+    }
+
+    .stats-panel {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 15px;
+        margin-bottom: 20px;
+    }
+
+    .stat-card {
+        background: white;
+        padding: 15px;
+        border-radius: 8px;
+        text-align: center;
+    }
+
+    .stat-value {
+        font-size: 2em;
+        font-weight: bold;
+        color: #0d6efd;
+    }
+
+    .stat-label {
+        color: #6c757d;
+        font-size: 0.9em;
+    }
+
+    .control-panel {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 20px;
+        padding: 15px;
+        background: white;
+        border-radius: 8px;
+    }
+
+    .status-indicator {
+        display: flex;
+        align-items: center;
+    }
+
+    .status-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        margin-right: 8px;
+        animation: blink 2s infinite;
+    }
+
+    .status-dot.online {
+        background: #198754;
+    }
+
+    .status-dot.offline {
+        background: #dc3545;
+    }
+
+    @@keyframes blink {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+</style>
+
+<div class="pipeline-monitor">
+    <!-- Control Panel -->
+    <div class="control-panel">
+        <div>
+            <h4>Pipeline Execution Monitor</h4>
+            <small class="text-muted">Job ID: @jobId</small>
+        </div>
+        <div class="status-indicator">
+            <span class="status-dot online" id="connectionStatus"></span>
+            <span id="connectionText">Connected</span>
+        </div>
+        <div>
+            <button class="btn btn-warning btn-sm" onclick="pausePipeline()">
+                <i class="bi bi-pause"></i> Pause
+            </button>
+            <button class="btn btn-danger btn-sm" onclick="cancelPipeline()">
+                <i class="bi bi-stop"></i> Cancel
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="clearLogs()">
+                <i class="bi bi-trash"></i> Clear Logs
+            </button>
+        </div>
+    </div>
+
+    <!-- Stats Panel -->
+    <div class="stats-panel">
+        <div class="stat-card">
+            <div class="stat-value" id="progressPercent">0%</div>
+            <div class="stat-label">Overall Progress</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="rowsProcessed">0</div>
+            <div class="stat-label">Rows Processed</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="elapsedTime">00:00:00</div>
+            <div class="stat-label">Elapsed Time</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="rowsPerSecond">0</div>
+            <div class="stat-label">Rows/Second</div>
+        </div>
+    </div>
+
+    <!-- Pipeline Stages -->
+    <div class="stages-container">
+        <div class="stage-card pending" data-stage="DataReduction">
+            <div class="stage-icon">
+                <i class="bi bi-funnel"></i>
+            </div>
+            <h6 class="text-center">Data Reduction</h6>
+            <div class="progress mt-2">
+                <div class="progress-bar" style="width: 0%"></div>
+            </div>
+            <small class="text-muted d-block text-center mt-1">Optional</small>
+        </div>
+
+        <div class="stage-card pending" data-stage="PreObfuscation">
+            <div class="stage-icon">
+                <i class="bi bi-shield-check"></i>
+            </div>
+            <h6 class="text-center">Pre-Obfuscation</h6>
+            <div class="progress mt-2">
+                <div class="progress-bar" style="width: 0%"></div>
+            </div>
+            <small class="text-muted d-block text-center mt-1">Required</small>
+        </div>
+
+        <div class="stage-card pending" data-stage="Obfuscation">
+            <div class="stage-icon">
+                <i class="bi bi-lock"></i>
+            </div>
+            <h6 class="text-center">Obfuscation</h6>
+            <div class="progress mt-2">
+                <div class="progress-bar" style="width: 0%"></div>
+            </div>
+            <small class="text-muted d-block text-center mt-1">Required</small>
+        </div>
+
+        <div class="stage-card pending" data-stage="PostObfuscation">
+            <div class="stage-icon">
+                <i class="bi bi-check-circle"></i>
+            </div>
+            <h6 class="text-center">Post-Obfuscation</h6>
+            <div class="progress mt-2">
+                <div class="progress-bar" style="width: 0%"></div>
+            </div>
+            <small class="text-muted d-block text-center mt-1">Required</small>
+        </div>
+
+        <div class="stage-card pending" data-stage="Validation">
+            <div class="stage-icon">
+                <i class="bi bi-clipboard-check"></i>
+            </div>
+            <h6 class="text-center">Validation</h6>
+            <div class="progress mt-2">
+                <div class="progress-bar" style="width: 0%"></div>
+            </div>
+            <small class="text-muted d-block text-center mt-1">Optional</small>
+        </div>
+    </div>
+
+    <!-- Log Container -->
+    <div class="log-container" id="logContainer">
+        <div class="text-center text-muted" style="margin-top: 50px;">
+            <i class="bi bi-hourglass-split" style="font-size: 2em;"></i>
+            <p>Waiting for logs...</p>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/lib/microsoft-signalr/signalr.min.js"></script>
+    <script>
+        const jobId = '@jobId';
+        let connection;
+        let startTime = Date.now();
+        let logCount = 0;
+        let autoScroll = true;
+
+        // Initialize SignalR connection
+        async function initializeConnection() {
+            connection = new signalR.HubConnectionBuilder()
+                .withUrl("/hubs/pipeline")
+                .withAutomaticReconnect()
+                .configureLogging(signalR.LogLevel.Information)
+                .build();
+
+            // Connection state handlers
+            connection.onreconnecting(() => {
+                updateConnectionStatus(false);
+            });
+
+            connection.onreconnected(() => {
+                updateConnectionStatus(true);
+                connection.invoke("JoinJobMonitoring", jobId);
+            });
+
+            connection.onclose(() => {
+                updateConnectionStatus(false);
+            });
+
+            // Message handlers
+            connection.on("LogReceived", (log) => {
+                appendLog(log);
+            });
+
+            connection.on("ProgressUpdate", (progress) => {
+                updateProgress(progress);
+            });
+
+            connection.on("StageUpdate", (update) => {
+                updateStageStatus(update);
+            });
+
+            connection.on("LogBatchReceived", (batch) => {
+                batch.logs.forEach(log => appendLog(log));
+            });
+
+            try {
+                await connection.start();
+                updateConnectionStatus(true);
+                await connection.invoke("JoinJobMonitoring", jobId);
+                console.log("Connected to pipeline monitoring hub");
+            } catch (err) {
+                console.error("Failed to connect:", err);
+                updateConnectionStatus(false);
+                setTimeout(initializeConnection, 5000);
+            }
+        }
+
+        function updateConnectionStatus(isConnected) {
+            const statusDot = document.getElementById('connectionStatus');
+            const statusText = document.getElementById('connectionText');
+            
+            if (isConnected) {
+                statusDot.className = 'status-dot online';
+                statusText.textContent = 'Connected';
+            } else {
+                statusDot.className = 'status-dot offline';
+                statusText.textContent = 'Disconnected';
+            }
+        }
+
+        function appendLog(log) {
+            const container = document.getElementById('logContainer');
+            
+            // Clear initial message if this is the first log
+            if (logCount === 0) {
+                container.innerHTML = '';
+            }
+            logCount++;
+
+            const logEntry = document.createElement('div');
+            logEntry.className = 'log-entry';
+            
+            const timestamp = new Date(log.timestamp).toLocaleTimeString('en-US', { 
+                hour12: false,
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+            
+            const levelClass = log.level.toLowerCase();
+            
+            logEntry.innerHTML = `
+                <span class="log-timestamp">${timestamp}</span>
+                <span class="log-level ${levelClass}">${log.level}</span>
+                <span class="log-message">${escapeHtml(log.message)}</span>
+            `;
+            
+            container.appendChild(logEntry);
+            
+            // Auto-scroll if enabled
+            if (autoScroll) {
+                container.scrollTop = container.scrollHeight;
+            }
+        }
+
+        function updateProgress(progress) {
+            document.getElementById('progressPercent').textContent = 
+                Math.round(progress.progressPercent) + '%';
+            document.getElementById('rowsProcessed').textContent = 
+                progress.rowsProcessed.toLocaleString();
+            
+            // Update current stage progress
+            const stageCard = document.querySelector(`[data-stage="${progress.stageName}"]`);
+            if (stageCard) {
+                const progressBar = stageCard.querySelector('.progress-bar');
+                if (progressBar) {
+                    progressBar.style.width = progress.progressPercent + '%';
+                }
+            }
+        }
+
+        function updateStageStatus(update) {
+            const stageCard = document.querySelector(`[data-stage="${update.stageName}"]`);
+            if (!stageCard) return;
+            
+            // Remove all status classes
+            stageCard.classList.remove('pending', 'active', 'completed', 'failed', 'skipped');
+            
+            // Add new status class
+            switch (update.status) {
+                case 'Started':
+                    stageCard.classList.add('active');
+                    break;
+                case 'Completed':
+                    stageCard.classList.add('completed');
+                    break;
+                case 'Failed':
+                    stageCard.classList.add('failed');
+                    if (update.errorMessage) {
+                        stageCard.title = update.errorMessage;
+                    }
+                    break;
+                case 'Skipped':
+                    stageCard.classList.add('skipped');
+                    break;
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function clearLogs() {
+            const container = document.getElementById('logContainer');
+            container.innerHTML = '';
+            logCount = 0;
+        }
+
+        async function pausePipeline() {
+            if (confirm('Are you sure you want to pause this pipeline execution?')) {
+                // Implementation for pausing pipeline
+                console.log('Pausing pipeline...');
+            }
+        }
+
+        async function cancelPipeline() {
+            if (confirm('Are you sure you want to cancel this pipeline execution? This cannot be undone.')) {
+                try {
+                    const response = await fetch(`/api/pipeline/${jobId}/cancel`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    
+                    if (response.ok) {
+                        alert('Pipeline cancelled successfully');
+                    } else {
+                        alert('Failed to cancel pipeline');
+                    }
+                } catch (err) {
+                    console.error('Error cancelling pipeline:', err);
+                    alert('Error cancelling pipeline');
+                }
+            }
+        }
+
+        // Update elapsed time every second
+        setInterval(() => {
+            const elapsed = Math.floor((Date.now() - startTime) / 1000);
+            const hours = Math.floor(elapsed / 3600);
+            const minutes = Math.floor((elapsed % 3600) / 60);
+            const seconds = elapsed % 60;
+            
+            document.getElementById('elapsedTime').textContent = 
+                `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }, 1000);
+
+        // Toggle auto-scroll when user scrolls manually
+        document.getElementById('logContainer').addEventListener('scroll', (e) => {
+            const container = e.target;
+            autoScroll = Math.abs(container.scrollHeight - container.scrollTop - container.clientHeight) < 10;
+        });
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            initializeConnection();
+        });
+    </script>
+}
